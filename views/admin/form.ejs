@@ -48,6 +48,7 @@
                 <input type="hidden" name="translation_locale" value="<%= item.locale %>" data-translation-locale>
                 <div class="translation-heading"><div><span>语言版本</span><strong data-language-label><%= editorLanguageName(item.locale) %> · <%= item.locale.toUpperCase() %></strong></div><button type="button" class="remove-language" data-remove-language>移除此语言</button></div>
                 <label>标题<input name="translation_title" value="<%= item.title || '' %>" required></label>
+                <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于文章列表和搜索引擎；留空时会从正文自动提取"><%= item.summary || '' %></textarea></label>
                 <label class="content-label">内容</label>
                 <div class="markdown-workspace">
                   <div class="markdown-source" data-markdown-source>
@@ -67,9 +68,6 @@
             <div class="inspector-heading"><p class="eyebrow">SETTINGS</p><h2>文章设置</h2></div>
             <label>状态<select name="status"><option value="draft" <%= post.status === 'draft' ? 'selected' : '' %>>草稿</option><option value="published" <%= post.status === 'published' ? 'selected' : '' %>>已发布</option></select></label>
             <label>发布日期<input name="published_at" type="datetime-local" value="<%= post.published_at ? new Date(post.published_at).toISOString().slice(0,16) : '' %>" required></label>
-            <div class="summary-settings" data-summary-panels>
-              <% editorTranslations.forEach((item, index) => { %><label class="summary-panel <%= index === 0 ? 'active' : '' %>" data-summary-panel="translation-<%= index %>">摘要<textarea name="translation_summary" rows="6" placeholder="用于文章列表和搜索引擎"><%= item.summary || '' %></textarea></label><% }) %>
-            </div>
             <div class="inspector-actions">
               <% if (!isNew) { %><a class="button" target="_blank" href="/post/<%= editorTranslations[0].locale %>/<%= post.slug %>" data-view-post>查看文章 ↗</a><% } %>
               <button class="primary" type="submit">保存文章</button>
@@ -88,6 +86,7 @@
     <input type="hidden" name="translation_locale" value="" data-translation-locale>
     <div class="translation-heading"><div><span>语言版本</span><strong data-language-label></strong></div><button type="button" class="remove-language" data-remove-language>移除此语言</button></div>
     <label>标题<input name="translation_title" value="" required></label>
+    <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于文章列表和搜索引擎；留空时会从正文自动提取"></textarea></label>
     <label class="content-label">内容</label>
     <div class="markdown-workspace">
       <div class="markdown-source" data-markdown-source>
@@ -98,5 +97,4 @@
     </div>
   </section>
 </template>
-<template id="summary-template"><label class="summary-panel" data-summary-panel="">摘要<textarea name="translation_summary" rows="6" placeholder="用于文章列表和搜索引擎"></textarea></label></template>
 <%- include('../partials/footer', { adminLayout: true }) %>

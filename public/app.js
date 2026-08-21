@@ -40,12 +40,10 @@ if (editorForm) initializeEditor(editorForm);
 function initializeEditor(form) {
   const tabs = form.querySelector('[data-tabs]');
   const panels = form.querySelector('[data-panels]');
-  const summaryPanels = form.querySelector('[data-summary-panels]');
   const adder = form.querySelector('[data-language-adder]');
   const localeInput = form.querySelector('[data-new-locale]');
   const languageError = form.querySelector('[data-language-error]');
   const template = document.querySelector('#translation-template');
-  const summaryTemplate = document.querySelector('#summary-template');
   const detailLayout = form.querySelector('[data-editor-detail-layout]');
   const options = new Map([...document.querySelectorAll('#all-language-options option')].map(option => [option.value.toLowerCase(), option.textContent]));
   let nextPanelId = panels.querySelectorAll('[data-panel]').length;
@@ -53,7 +51,6 @@ function initializeEditor(form) {
   const activate = panelId => {
     tabs.querySelectorAll('[data-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === panelId));
     panels.querySelectorAll('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === panelId));
-    summaryPanels.querySelectorAll('[data-summary-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.summaryPanel === panelId));
     const locale = panels.querySelector(`[data-panel="${CSS.escape(panelId)}"] [data-translation-locale]`)?.value;
     const prefix = form.querySelector('[data-url-prefix]');
     if (locale && prefix) prefix.textContent = `/post/${locale}/`;
@@ -97,7 +94,6 @@ function initializeEditor(form) {
     }
     const panelId = panel.dataset.panel;
     tabs.querySelector(`[data-tab="${CSS.escape(panelId)}"]`)?.remove();
-    summaryPanels.querySelector(`[data-summary-panel="${CSS.escape(panelId)}"]`)?.remove();
     panel.remove();
     const firstTab = tabs.querySelector('[data-tab]');
     if (firstTab) activate(firstTab.dataset.tab);
@@ -128,9 +124,6 @@ function initializeEditor(form) {
     panel.querySelector('[data-language-label]').textContent = label;
     panels.append(panel);
     initializeImageUpload(panel);
-    const summaryPanel = summaryTemplate.content.firstElementChild.cloneNode(true);
-    summaryPanel.dataset.summaryPanel = panelId;
-    summaryPanels.append(summaryPanel);
 
     const tab = document.createElement('button');
     tab.type = 'button';
