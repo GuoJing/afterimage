@@ -93,6 +93,7 @@ function initializeEditor(form) {
   panels.addEventListener('input', event => {
     if (event.target.matches('[data-markdown-input]')) schedulePreview(event.target);
   });
+  panels.querySelectorAll('[data-panel]').forEach(initializeImageUpload);
   panels.querySelectorAll('[data-markdown-input]').forEach(schedulePreview);
 
   function addLanguage() {
@@ -113,6 +114,7 @@ function initializeEditor(form) {
     panel.querySelector('[data-translation-locale]').value = locale;
     panel.querySelector('[data-language-label]').textContent = label;
     panels.append(panel);
+    initializeImageUpload(panel);
     const summaryPanel = summaryTemplate.content.firstElementChild.cloneNode(true);
     summaryPanel.dataset.summaryPanel = panelId;
     summaryPanels.append(summaryPanel);
@@ -164,6 +166,98 @@ function initializeEditor(form) {
       preview.innerHTML = '<p class="preview-placeholder">暂时无法生成预览</p>';
     }
   }
+
+  function initializeImageUpload(panel) {
+    const source = panel.querySelector('[data-markdown-source]');
+    const textarea = panel.querySelector('[data-markdown-input]');
+    const input = panel.querySelector('[data-image-input]');
+    if (!source || !textarea || !input) return;
+
+    input.addEventListener('change', () => {
+      uploadImages(input.files, textarea).finally(() => { input.value = ''; });
+    });
+    textarea.addEventListener('paste', event => {
+      const images = imageFiles(event.clipboardData?.files);
+      if (!images.length) return;
+      event.preventDefault();
+      uploadImages(images, textarea);
+    });
+    source.addEventListener('dragover', event => {
+      if (!hasDraggedFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      source.classList.add('is-dragging');
+    });
+    source.addEventListener('dragleave', event => {
+      if (!source.contains(event.relatedTarget)) source.classList.remove('is-dragging');
+    });
+    source.addEventListener('drop', event => {
+      source.classList.remove('is-dragging');
+      const images = imageFiles(event.dataTransfer?.files);
+      if (!images.length) return;
+      event.preventDefault();
+      uploadImages(images, textarea);
+    });
+  }
+
+  async function uploadImages(files, textarea) {
+    const images = imageFiles(files);
+    if (!images.length) return;
+    const status = textarea.closest('[data-markdown-source]').querySelector('[data-upload-status]');
+    const maxBytes = Number(form.dataset.imageMaxBytes || 0);
+    let completed = 0;
+    status.className = 'upload-status uploading';
+
+    try {
+      for (const file of images) {
+        if (maxBytes && file.size > maxBytes) throw new Error(`“${file.name}”超过上传大小限制。`);
+        status.textContent = `正在上传 ${completed + 1}/${images.length}…`;
+        const response = await fetch(form.dataset.imageUploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-CSRF-Token': form.querySelector('[data-csrf]').value,
+          },
+          body: file,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || '图片上传失败，请刷新页面后重试。');
+        insertMarkdownImage(textarea, result.url, file.name);
+        completed += 1;
+      }
+      status.className = 'upload-status success';
+      status.textContent = images.length > 1 ? `已上传 ${images.length} 张图片` : '图片已插入';
+    } catch (error) {
+      status.className = 'upload-status error';
+      status.textContent = error.message || '图片上传失败';
+    }
+  }
+
+  function insertMarkdownImage(textarea, url, filename) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    const alt = markdownAlt(filename);
+    const leading = before && !before.endsWith('\n') ? '\n\n' : '';
+    const trailing = after && !after.startsWith('\n') ? '\n\n' : '\n';
+    textarea.setRangeText(`${leading}![${alt}](${url})${trailing}`, start, end, 'end');
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus();
+  }
+}
+
+function imageFiles(fileList) {
+  return [...(fileList || [])].filter(file => file.type.startsWith('image/'));
+}
+
+function hasDraggedFiles(event) {
+  return [...(event.dataTransfer?.types || [])].includes('Files');
+}
+
+function markdownAlt(filename) {
+  const name = String(filename || 'image').replace(/\.[^.]+$/, '') || 'image';
+  return name.replaceAll('\\', '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]').replace(/[\r\n]+/g, ' ').trim();
 }
 
 function normalizeLocale(value) {

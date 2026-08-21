@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import Database from 'better-sqlite3';
 import express from 'express';
 import session from 'express-session';
@@ -28,6 +29,16 @@ const blog = {
   description: process.env.BLOG_DESCRIPTION || '一个关于摄影、观看与生活的个人博客。',
   author: process.env.BLOG_AUTHOR || process.env.BLOG_TITLE || 'AFTERIMAGE PHOTOGRAPHY',
 };
+
+const imageStorage = String(process.env.IMAGE_STORAGE || 'local').trim().toLowerCase();
+if (!['local', 'spaces'].includes(imageStorage)) throw new Error('IMAGE_STORAGE 只能是 local 或 spaces');
+const imageUploadDir = path.resolve(process.env.IMAGE_UPLOAD_DIR || path.join(__dirname, 'data', 'uploads'));
+const imagePublicPath = normalizePublicPath(process.env.IMAGE_PUBLIC_PATH || '/uploads');
+const imagePrefix = normalizeImagePrefix(process.env.IMAGE_PREFIX || 'images');
+const imageMaxSizeMb = normalizeImageMaxSize(process.env.IMAGE_MAX_SIZE_MB || '15');
+const imageMaxBytes = imageMaxSizeMb * 1024 * 1024;
+const spaces = imageStorage === 'spaces' ? createSpacesStorage() : null;
+if (imageStorage === 'local') fs.mkdirSync(imageUploadDir, { recursive: true });
 
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'blog.db');
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -62,6 +73,12 @@ app.set('views', path.join(__dirname, 'views'));
 app.disable('x-powered-by');
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+if (imageStorage === 'local') {
+  app.use(imagePublicPath, (req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    next();
+  }, express.static(imageUploadDir, { maxAge: '1y', immutable: true, index: false, dotfiles: 'deny' }));
+}
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
 app.use(session({
   name: 'afterimage.sid',
@@ -98,6 +115,9 @@ app.use((req, res, next) => {
     : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
   res.locals.structuredData = null;
   res.locals.markdownUrl = null;
+  res.locals.imageUploadUrl = `${adminBasePath}/uploads/images`;
+  res.locals.imageMaxSizeMb = imageMaxSizeMb;
+  res.locals.imageMaxBytes = imageMaxBytes;
   res.locals.serializeJsonLd = serializeJsonLd;
   setResponseLocale(res, locale);
   next();
@@ -255,6 +275,25 @@ app.post(`${adminBasePath}/preview`, requireAdmin, requireCsrf, (req, res) => {
   res.type('html').send(renderMarkdown(String(req.body.markdown || '')));
 });
 
+app.post(
+  `${adminBasePath}/uploads/images`,
+  requireAdmin,
+  requireCsrf,
+  parseImageBody,
+  async (req, res) => {
+    const image = detectImageType(req.body);
+    if (!image) return res.status(415).json({ error: '仅支持 JPEG、PNG、WebP、GIF 或 AVIF 图片。' });
+
+    try {
+      const url = await storeImage(req.body, image);
+      res.status(201).json({ url, mimeType: image.mimeType, size: req.body.length });
+    } catch (error) {
+      console.error('图片上传失败：', error);
+      res.status(502).json({ error: '图片存储失败，请稍后重试。' });
+    }
+  },
+);
+
 app.post(`${adminBasePath}/posts`, requireAdmin, requireCsrf, (req, res) => {
   try {
     const postId = savePost(null, req.body);
@@ -300,6 +339,122 @@ app.listen(port, () => {
 function normalizeLocale(value) {
   const locale = String(value || '').trim().toLowerCase().replaceAll('_', '-');
   return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(locale) ? locale : '';
+}
+
+function normalizePublicPath(value) {
+  const pathname = `/${String(value || '').trim().replace(/^\/+|\/+$/g, '')}`;
+  if (pathname === '/' || pathname.includes('..') || !/^\/[A-Za-z0-9/_-]+$/.test(pathname)) {
+    throw new Error('IMAGE_PUBLIC_PATH 必须是有效路径，例如 /uploads');
+  }
+  return pathname;
+}
+
+function normalizeImagePrefix(value) {
+  const prefix = String(value || '').trim().replace(/^\/+|\/+$/g, '');
+  const segments = prefix.split('/');
+  if (!prefix || segments.some(segment => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segment) || segment === '.' || segment === '..')) {
+    throw new Error('IMAGE_PREFIX 必须是有效的相对目录，例如 media 或 library/main');
+  }
+  return segments.join('/');
+}
+
+function normalizeImageMaxSize(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size < 1 || size > 50) throw new Error('IMAGE_MAX_SIZE_MB 必须介于 1 和 50 之间');
+  return size;
+}
+
+function parseImageBody(req, res, next) {
+  express.raw({ type: () => true, limit: imageMaxBytes })(req, res, error => {
+    if (error?.type === 'entity.too.large') return res.status(413).json({ error: `图片不能超过 ${imageMaxSizeMb} MB。` });
+    if (error) return res.status(400).json({ error: '无法读取上传的图片。' });
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: '请选择需要上传的图片。' });
+    next();
+  });
+}
+
+function detectImageType(buffer) {
+  if (!Buffer.isBuffer(buffer)) return null;
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { extension: 'jpg', mimeType: 'image/jpeg' };
+  }
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { extension: 'png', mimeType: 'image/png' };
+  }
+  if (buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'))) {
+    return { extension: 'gif', mimeType: 'image/gif' };
+  }
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') {
+    return { extension: 'webp', mimeType: 'image/webp' };
+  }
+  if (buffer.length >= 16 && buffer.subarray(4, 8).toString('ascii') === 'ftyp') {
+    const brands = buffer.subarray(8, Math.min(buffer.length, 32)).toString('ascii');
+    if (brands.includes('avif') || brands.includes('avis')) return { extension: 'avif', mimeType: 'image/avif' };
+  }
+  return null;
+}
+
+function createSpacesStorage() {
+  const region = requiredEnvironment('SPACES_REGION');
+  const bucket = requiredEnvironment('SPACES_BUCKET');
+  const endpoint = normalizeHttpsUrl(process.env.SPACES_ENDPOINT || `https://${region}.digitaloceanspaces.com`, 'SPACES_ENDPOINT');
+  const publicUrl = normalizeHttpsUrl(requiredEnvironment('SPACES_PUBLIC_URL'), 'SPACES_PUBLIC_URL');
+  const accessKeyId = requiredEnvironment('SPACES_ACCESS_KEY');
+  const secretAccessKey = requiredEnvironment('SPACES_SECRET_KEY');
+  const client = new S3Client({
+    region: 'us-east-1',
+    endpoint,
+    forcePathStyle: false,
+    credentials: { accessKeyId, secretAccessKey },
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
+  });
+  return { bucket, publicUrl, client };
+}
+
+async function storeImage(buffer, image) {
+  const now = new Date();
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const filename = `${crypto.randomUUID()}.${image.extension}`;
+  const objectKey = `${imagePrefix}/${year}/${month}/${filename}`;
+
+  if (imageStorage === 'spaces') {
+    await spaces.client.send(new PutObjectCommand({
+      Bucket: spaces.bucket,
+      Key: objectKey,
+      Body: buffer,
+      ACL: 'public-read',
+      ContentType: image.mimeType,
+      ContentDisposition: 'inline',
+      CacheControl: 'public, max-age=31536000, immutable',
+    }));
+    return `${spaces.publicUrl}/${objectKey}`;
+  }
+
+  const destination = path.join(imageUploadDir, ...objectKey.split('/'));
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.writeFileSync(destination, buffer, { flag: 'wx', mode: 0o640 });
+  return `${imagePublicPath}/${objectKey}`;
+}
+
+function requiredEnvironment(name) {
+  const value = String(process.env[name] || '').trim();
+  if (!value) throw new Error(`IMAGE_STORAGE=spaces 时必须设置 ${name}`);
+  return value;
+}
+
+function normalizeHttpsUrl(value, name) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} 必须是有效的 HTTPS URL`);
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} 必须是有效的 HTTPS URL`);
+  }
+  return url.toString().replace(/\/+$/, '');
 }
 
 function normalizeSiteUrl(value) {
@@ -604,7 +759,8 @@ function requireAdmin(req, res, next) {
 }
 
 function requireCsrf(req, res, next) {
-  if (!req.session.csrf || !safeEqual(String(req.body.csrf || ''), req.session.csrf)) return res.status(403).send('请求已过期，请刷新页面后重试。');
+  const supplied = String(req.body?.csrf || req.get('x-csrf-token') || '');
+  if (!req.session.csrf || !safeEqual(supplied, req.session.csrf)) return res.status(403).send('请求已过期，请刷新页面后重试。');
   next();
 }
 

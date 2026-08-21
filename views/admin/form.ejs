@@ -16,7 +16,7 @@
     <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">文章已保存</p><% } %>
     <% if (error) { %><p class="form-error"><%= error %></p><% } %>
 
-    <form class="editor-form" action="<%= isNew ? `${adminBasePath}/posts` : `${adminBasePath}/posts/${post.id}` %>" method="post" data-editor-form data-preview-url="<%= adminBasePath %>/preview">
+    <form class="editor-form" action="<%= isNew ? `${adminBasePath}/posts` : `${adminBasePath}/posts/${post.id}` %>" method="post" data-editor-form data-preview-url="<%= adminBasePath %>/preview" data-image-upload-url="<%= imageUploadUrl %>" data-image-max-bytes="<%= imageMaxBytes %>">
       <input type="hidden" name="csrf" value="<%= csrf %>" data-csrf>
       <div class="editor-detail-layout" data-editor-detail-layout>
         <div class="editor-primary">
@@ -50,7 +50,10 @@
                 <label>标题<input name="translation_title" value="<%= item.title || '' %>" required></label>
                 <label class="content-label">内容</label>
                 <div class="markdown-workspace">
-                  <label class="markdown-source"><span>Markdown</span><textarea class="body-editor" name="translation_body" rows="22" placeholder="开始写作…" data-markdown-input><%= item.body || '' %></textarea></label>
+                  <div class="markdown-source" data-markdown-source>
+                    <div class="markdown-toolbar"><strong>Markdown</strong><span data-upload-status>可拖入或粘贴图片</span><label class="image-upload-button">上传图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple data-image-input></label></div>
+                    <textarea class="body-editor" name="translation_body" rows="22" placeholder="开始写作…" data-markdown-input><%= item.body || '' %></textarea>
+                  </div>
                   <div class="markdown-preview-shell"><span class="preview-label">预览</span><div class="prose markdown-preview" data-markdown-preview><p class="preview-placeholder">预览会显示在这里</p></div></div>
                 </div>
               </section>
@@ -87,7 +90,10 @@
     <label>标题<input name="translation_title" value="" required></label>
     <label class="content-label">内容</label>
     <div class="markdown-workspace">
-      <label class="markdown-source"><span>Markdown</span><textarea class="body-editor" name="translation_body" rows="22" placeholder="开始写作…" data-markdown-input></textarea></label>
+      <div class="markdown-source" data-markdown-source>
+        <div class="markdown-toolbar"><strong>Markdown</strong><span data-upload-status>可拖入或粘贴图片</span><label class="image-upload-button">上传图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple data-image-input></label></div>
+        <textarea class="body-editor" name="translation_body" rows="22" placeholder="开始写作…" data-markdown-input></textarea>
+      </div>
       <div class="markdown-preview-shell"><span class="preview-label">预览</span><div class="prose markdown-preview" data-markdown-preview><p class="preview-placeholder">预览会显示在这里</p></div></div>
     </div>
   </section>

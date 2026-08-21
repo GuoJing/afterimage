@@ -39,7 +39,7 @@
   <meta name="twitter:description" content="<%= resolvedDescription %>">
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=5">
+  <link rel="stylesheet" href="/style.css?v=6">
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">

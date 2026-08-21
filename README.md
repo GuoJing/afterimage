@@ -11,7 +11,7 @@
 - 中文为默认语言；文章 URL 明确包含语言，缺少该语言翻译时回退到默认语言
 - Admin 新建、编辑、发布、删除文章
 - 管理员可预览草稿，普通访客访问草稿仍返回 404
-- Markdown 正文，支持外链图片
+- Markdown 正文，支持外链图片和管理员本地图片上传
 - 文章 canonical、hreflang、Open Graph、Twitter Card 与 BlogPosting JSON-LD
 - 动态 `robots.txt`、`sitemap.xml`、`llms.txt`、`llms-full.txt` 和文章 Markdown 版本
 - 响应式页面、明暗主题
@@ -56,6 +56,48 @@ BLOG_LOCALES=zh,en,ja,fr
 
 `BLOG_LOCALES` 控制前台语言菜单，Admin 编辑器则可以为文章添加任意有效语言代码，不受这个列表限制。某篇文章没有 URL 所指定的语言时，会回退到默认语言；默认语言也不存在时返回 404。
 
+## 图片上传
+
+后台 Markdown 编辑器支持选择、拖拽和粘贴图片。上传成功后会在光标位置自动插入图片 URL，例如：
+
+```markdown
+![photo](/uploads/library/2026/08/uuid.webp)
+```
+
+本地图片存储配置：
+
+```env
+IMAGE_STORAGE=local
+IMAGE_PREFIX=library
+IMAGE_UPLOAD_DIR=/opt/afterimage/data/uploads
+IMAGE_PUBLIC_PATH=/uploads
+IMAGE_MAX_SIZE_MB=15
+```
+
+`IMAGE_PREFIX` 是当前部署使用的任意目录命名，不需要写成 `test` 或 `prod`。例如两套部署可以分别使用 `library`、`archive`；本地文件会保存到 `IMAGE_UPLOAD_DIR/IMAGE_PREFIX/年/月/文件名`。它允许字母、数字、点、下划线、连字符和多级目录。
+
+`IMAGE_UPLOAD_DIR` 可以省略，默认使用项目中的 `data/uploads`。生产服务器推荐配置绝对路径，并确保运行 Node.js 的用户对目录有写权限。
+
+DigitalOcean Spaces + CDN 配置：
+
+```env
+IMAGE_STORAGE=spaces
+IMAGE_PREFIX=library
+IMAGE_MAX_SIZE_MB=15
+SPACES_REGION=sgp1
+SPACES_BUCKET=your-space-name
+SPACES_ENDPOINT=https://sgp1.digitaloceanspaces.com
+SPACES_PUBLIC_URL=https://your-space-name.sgp1.cdn.digitaloceanspaces.com
+SPACES_ACCESS_KEY=your-limited-access-key
+SPACES_SECRET_KEY=your-secret-key
+```
+
+Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PUBLIC_URL` 可以使用 DigitalOcean 提供的 CDN endpoint，也可以填写已配置证书的自定义 CDN 域名。Access Key 应限制到目标 bucket，并授予 Read/Write/Delete 权限；密钥只保存在 `.env`，不要提交到 Git。
+
+当前支持 JPEG、PNG、WebP、GIF 和 AVIF；服务端根据文件实际内容判断类型，不接受 SVG 或只修改扩展名的伪图片。
+
+图片 URL 使用随机文件名并按年月分目录，可以安全设置长期浏览器/CDN 缓存。本地模式保存相对 URL；Spaces 模式保存 `SPACES_PUBLIC_URL` 下的完整 CDN URL。
+
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。
@@ -77,4 +119,4 @@ docker compose up -d --build
 
 Compose 只将应用端口绑定到服务器回环地址 `127.0.0.1:3000`。不要改成 `3000:3000`，否则应用端口可能绕过主机防火墙直接暴露到公网。
 
-备份只需复制 `data/blog.db`（为了获得一致快照，建议先短暂停止容器）。
+本地存储模式备份需要同时保存 `data/blog.db` 和 `data/uploads`（为了获得一致快照，建议先短暂停止服务）。Spaces 本身不等同于备份，如需独立备份应定期同步 bucket。
