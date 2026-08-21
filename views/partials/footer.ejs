@@ -1,4 +1,4 @@
-<footer class="site-foot"><span><%= blog.title %></span><a href="/admin">Admin</a></footer>
-<script src="/app.js"></script>
+<% if (!(typeof adminLayout !== 'undefined' && adminLayout)) { %><footer class="site-foot"><span><%= blog.title %></span></footer><% } %>
+<script src="/app.js?v=3"></script>
 </body>
 </html>

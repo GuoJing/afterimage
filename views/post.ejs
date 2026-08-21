@@ -1,11 +1,18 @@
-<%- include('partials/head', { pageTitle: post.title, description: post.summary || blog.description }) %>
-<main class="main inner">
-  <article class="post" lang="<%= post.rendered_locale %>">
-    <h1><%= post.title %></h1>
+<%- include('partials/head', { pageTitle: post.title, description }) %>
+<main class="main inner post-page">
+  <article class="post post-detail" lang="<%= post.rendered_locale %>">
+    <div class="post-title-row">
+      <h1><%= post.title %></h1>
+      <% if (post.availableLocales.length > 1) { %>
+        <nav class="post-languages" aria-label="文章语言">
+          <% post.availableLocales.forEach(code => { %><a class="<%= code === post.rendered_locale ? 'active' : '' %>" href="/post/<%= code %>/<%= post.slug %>" <%- code === post.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
+        </nav>
+      <% } %>
+    </div>
+    <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
     <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
     <div class="prose"><%- renderMarkdown(post.body) %></div>
-    <time class="published static" datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
+    <time class="published" datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
   </article>
-  <a class="back" href="/<%= langQuery %>">← 返回首页</a>
 </main>
 <%- include('partials/footer') %>

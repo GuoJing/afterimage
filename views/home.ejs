@@ -1,23 +1,17 @@
 <%- include('partials/head', { pageTitle: '', description: blog.description }) %>
 <main class="main inner">
-  <% if (!posts.length) { %>
-    <section class="empty-state">
-      <h1>还没有文章</h1>
-      <p>登录后台，写下第一篇文章。</p>
-      <a href="/admin">进入 Admin</a>
-    </section>
-  <% } else { const featured = posts[0]; %>
+  <% if (posts.length) { const featured = posts[0]; %>
     <article class="post featured" lang="<%= featured.rendered_locale %>">
-      <h1><a href="/posts/<%= featured.slug %><%= langQuery %>"><%= featured.title %></a></h1>
+      <h1><a href="<%= postUrl(featured.slug) %>"><%= featured.title %></a></h1>
       <div class="prose"><%- renderMarkdown(featured.body) %></div>
-      <a class="published" href="/posts/<%= featured.slug %><%= langQuery %>"><time datetime="<%= featured.published_at %>"><%= formatDate(featured.published_at) %></time></a>
+      <a class="published" href="<%= postUrl(featured.slug) %>"><time datetime="<%= featured.published_at %>"><%= formatDate(featured.published_at) %></time></a>
     </article>
 
-    <% posts.forEach(post => { %>
+    <% posts.slice(1).forEach(post => { %>
       <article class="post-item" lang="<%= post.rendered_locale %>">
-        <h2><a href="/posts/<%= post.slug %><%= langQuery %>"><%= post.title %></a></h2>
+        <h2><a href="<%= postUrl(post.slug) %>"><%= post.title %></a></h2>
         <p><%= post.summary || post.body.replace(/[#_*`>\[\]()!-]/g, '').slice(0, 180) %></p>
-        <a class="published" href="/posts/<%= post.slug %><%= langQuery %>"><time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time></a>
+        <a class="published" href="<%= postUrl(post.slug) %>"><time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time></a>
       </article>
     <% }) %>
   <% } %>
