@@ -1,19 +1,17 @@
 <%- include('partials/head', { pageTitle: page.title, description }) %>
 <main class="main inner post-page page-detail-page content-layout-page">
-  <article class="post post-detail content-grid" lang="<%= page.rendered_locale %>">
-    <div class="content-column page-detail-content">
-      <div class="post-title-row">
-        <h1><%= page.title %></h1>
-        <% if (page.availableLocales.length > 1) { %>
-          <nav class="post-languages" aria-label="页面语言">
-            <% page.availableLocales.forEach(code => { %><a class="<%= code === page.rendered_locale ? 'active' : '' %>" href="/page/<%= code %>/<%= page.slug %>" <%- code === page.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
-          </nav>
-        <% } %>
-      </div>
-      <% if (page.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
-      <% if (page.rendered_locale !== locale) { %><p class="fallback-note">此页面暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
-      <div class="prose"><%- renderMarkdown(page.body) %></div>
+  <article class="post post-detail page-detail-content standard-content" lang="<%= page.rendered_locale %>">
+    <div class="post-title-row">
+      <h1><%= page.title %></h1>
+      <% if (page.availableLocales.length > 1) { %>
+        <nav class="post-languages" aria-label="页面语言">
+          <% page.availableLocales.forEach(code => { %><a class="<%= code === page.rendered_locale ? 'active' : '' %>" href="/page/<%= code %>/<%= page.slug %>" <%- code === page.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
+        </nav>
+      <% } %>
     </div>
+    <% if (page.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
+    <% if (page.rendered_locale !== locale) { %><p class="fallback-note">此页面暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
+    <div class="prose"><%- renderMarkdown(page.body) %></div>
   </article>
 </main>
 <%- include('partials/footer') %>

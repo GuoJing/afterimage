@@ -1,24 +1,22 @@
 <%- include('partials/head', { pageTitle: post.title, description }) %>
 <main class="main inner post-page content-layout-page">
-  <article class="post post-detail content-grid" lang="<%= post.rendered_locale %>">
-    <time class="published" datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
-    <div class="content-column article-detail-content">
-      <div class="post-title-row">
-        <h1><%= post.title %></h1>
-        <% if (post.availableLocales.length > 1) { %>
-          <nav class="post-languages" aria-label="文章语言">
-            <% post.availableLocales.forEach(code => { %><a class="<%= code === post.rendered_locale ? 'active' : '' %>" href="/post/<%= code %>/<%= post.slug %>" <%- code === post.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
-          </nav>
-        <% } %>
-      </div>
-      <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
-      <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
-      <div class="prose"><%- renderMarkdown(post.body) %></div>
-      <footer class="article-signature">
-        <img src="/apple-touch-icon.png" width="42" height="42" alt="<%= blog.title %>">
-        <p>Copyright by <%= blog.author %></p>
-      </footer>
+  <article class="post post-detail standard-content" lang="<%= post.rendered_locale %>">
+    <div class="post-title-row">
+      <h1><%= post.title %></h1>
+      <% if (post.availableLocales.length > 1) { %>
+        <nav class="post-languages" aria-label="文章语言">
+          <% post.availableLocales.forEach(code => { %><a class="<%= code === post.rendered_locale ? 'active' : '' %>" href="/post/<%= code %>/<%= post.slug %>" <%- code === post.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
+        </nav>
+      <% } %>
     </div>
+    <time class="published content-date" datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
+    <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
+    <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
+    <div class="prose"><%- renderMarkdown(post.body) %></div>
+    <footer class="article-signature">
+      <img src="/apple-touch-icon.png" width="42" height="42" alt="<%= blog.title %>">
+      <p>Copyright by <%= blog.author %></p>
+    </footer>
   </article>
 </main>
 <%- include('partials/footer') %>
