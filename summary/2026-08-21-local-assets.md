@@ -1,5 +1,9 @@
 # 前端本地资源检查
 
+> 后续字体更新：CSS 已按原站恢复 `en-sans / sys-sans / cjk-sans / sys-serif / mono / font-base / font-text` 分层。页面外层文本与文章标题使用 `Source Sans Pro` 优先、项目内置 `Source Sans 3` 作为本地替代；文章正文使用系统字体和 CJK 字体链；不加载任何外站字体资源。
+
+> 旧站精确复核：根据 `afterimage.typlog.io/posts/deep` 使用的 Meguro 0.5.0 与 Yue 1.0.0 CSS，文章标题继承 `Source Sans Pro` 文本字体链，但 `.e-content.yue` 正文会切回系统/CJK 基础字体链。图片组上下边距为 `1.64em`，组内图片通过两侧 `3px` padding 形成 `6px` 间距，连续 gallery 使用 `margin-top:-1.5em` 压缩纵向空白。本项目已用本地 `.image-stack/.image-row` 等价实现，并同步中文强调、标题层级、引用、列表和图注规则；没有引用 Typlog 的 CSS、JS 或字体资源。
+
 日期：2026-08-21
 
 ## 检查结论

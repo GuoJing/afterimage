@@ -27,8 +27,15 @@
   --line: rgba(0,0,0,.08);
   --accent: #000;
   --danger: #b42318;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
-  --text-font: "Source Sans 3", var(--sans);
+  --en-sans: "Helvetica Neue", Helvetica, Arial;
+  --sys-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Oxygen, Ubuntu, "Droid Sans", "Helvetica Neue";
+  --cjk-sans: "PingFang SC", "Hiragino Sans GB", "Droid Sans Fallback", "Microsoft YaHei";
+  --sys-serif: Georgia, Palatino, "Times New Roman", Times;
+  --mono: Menlo, Monaco, Consolas, "Courier New", monospace;
+  --font-base: var(--sys-sans), var(--cjk-sans), sans-serif;
+  --font-text: "Source Sans Pro", "Source Sans 3", var(--font-base);
+  --sans: var(--font-base);
+  --text-font: var(--font-text);
 }
 
 :root[data-theme="dark"] {
@@ -49,7 +56,7 @@
 
 * { box-sizing: border-box; }
 html { min-height: 100%; background: var(--bg); }
-body { min-height: 100vh; margin: 0; color: var(--text); background: var(--bg); font: 16px/1.42 var(--sans); }
+body { min-height: 100vh; margin: 0; color: var(--text); background: var(--bg); font: 16px/1.42 var(--font-base); }
 a { color: var(--accent); }
 button, input, textarea, select { font: inherit; }
 
@@ -74,31 +81,38 @@ button, input, textarea, select { font: inherit; }
 .inner { max-width: 680px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 .main { min-height: calc(100vh - 100px); padding-top: 64px; padding-bottom: 32px; font-family: var(--text-font); }
 .post { position: relative; padding: 30px 0 20px; }
-.post h1 { margin: 0 0 .1em; color: var(--strong); font: 900 1.8em/1.1 var(--sans); letter-spacing: .02em; }
+.post h1 { margin: 0 0 .1em; color: var(--strong); font: 900 1.8em/1.1 var(--font-text); letter-spacing: .02em; }
 .post h1 a { text-decoration: none; }
-.prose { margin-top: 2em; font-family: var(--sans); line-height: 1.72; overflow-wrap: break-word; }
+.prose { margin-top: 2em; font-family: var(--font-base); line-height: 1.72; overflow-wrap: break-word; }
 .prose h2, .prose h3 { color: var(--strong); margin: 1.8em 0 .6em; line-height: 1.25; }
 .prose p { margin: 1.2em 0; }
+.prose strong, .prose b, .prose em, .prose i { color: var(--strong); }
+:lang(zh) .prose em, :lang(zh-hans) .prose em, :lang(zh-hant) .prose em, :lang(ja) .prose em { font-style: normal; text-emphasis: filled dot var(--light); text-emphasis-position: under; }
+.prose em:lang(en) { font-style: italic; text-emphasis: none; }
 .prose img { display: block; max-width: 100%; height: auto; margin: 2em auto; }
-.prose .image-stack { display: grid; gap: 8px; margin: 12px 0; }
-.prose .image-row { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 8px; }
+.prose .image-stack { display: grid; gap: 6px; margin: 1.64em auto; }
+.prose .image-stack + .image-stack { margin-top: -1.5em; }
+.prose .image-row { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 6px; }
 .prose .image-row img { flex: 1 1 0; min-width: 0; width: auto; max-width: 100%; height: auto; margin: 0; object-fit: contain; }
 .prose .image-row img:only-child { flex: 0 1 auto; }
-.prose blockquote { margin: 1.5em 0; padding-left: 1.2em; border-left: 3px solid var(--line); color: var(--light); }
+.prose blockquote { position: relative; margin: 0 0 1.64em; padding: 34px 1em .1em 20px; border-left: 4px solid var(--accent); color: var(--text); font-family: var(--font-base); font-size: 1.12em; }
+.prose blockquote::before { content: "“"; position: absolute; top: 0; left: 20px; color: var(--accent); font: 700 48px/1 var(--sys-serif); }
+.prose hr { display: block; width: 90%; max-width: 100px; margin: 2.4em auto; border: 0; border-top: 5px solid var(--line); }
 .prose pre { overflow-x: auto; padding: 16px; border-radius: 6px; background: var(--bg-soft); }
-.prose code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.prose code { font-family: var(--mono); }
 .post-detail .prose { line-height: 1.64; }
 .post-detail .prose p { margin-top: 0; margin-bottom: 1.12em; }
 .post-detail .prose h2 { margin: 1.42em 0 .4em; font-size: 1.42em; }
-.post-detail .prose h3 { margin: 1.2em 0 .4em; font-size: 1.2em; }
+.post-detail .prose h3 { margin: 1.62em 0 1em; font-size: 1.17em; }
 .post-detail .prose h4,
 .post-detail .prose h5,
-.post-detail .prose h6 { margin: 1em 0 .4em; }
+.post-detail .prose h6 { margin: 1.4em 0 .8em; font-size: 1em; }
+.post-detail .prose h6 { font-weight: 500; }
 .post-detail .prose ul,
-.post-detail .prose ol { margin: 0 0 1.12em; padding-left: 1.4em; }
-.post-detail .prose li + li { margin-top: .25em; }
-.post-detail .prose figure { margin: 1.8em 0; }
-.post-detail .prose figcaption { margin-top: .6em; color: var(--light); font-size: .86em; text-align: center; }
+.post-detail .prose ol { margin: 0 0 24px 6px; padding-left: 16px; }
+.post-detail .prose li + li { margin-top: .2em; }
+.post-detail .prose figure { margin: 0; }
+.post-detail .prose figcaption { margin-top: 4px; color: var(--light); font-size: 13px; text-align: center; }
 .published { color: var(--light); font-weight: 500; text-decoration: none; }
 .published:hover { color: var(--strong); text-decoration: underline; }
 .published.static { display: block; margin-top: 2em; }
@@ -178,7 +192,7 @@ input:focus, textarea:focus, select:focus { border-color:var(--light); box-shado
 .translation-panel { display:none; }
 .translation-panel.active { display:block; }
 .translation-panel label + label { margin-top:18px; }
-.body-editor { min-height:420px; resize:vertical; font:14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.body-editor { min-height:420px; resize:vertical; font:14px/1.6 var(--mono); }
 .editor-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
 .editor-actions .danger { margin-right:auto; }
 .form-error, .form-success { padding:12px 14px; border-radius:6px; }
