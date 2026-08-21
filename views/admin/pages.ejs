@@ -1,0 +1,20 @@
+<%- include('../partials/head', { pageTitle: '页面', adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'pages' }) %>
+  <main class="admin-content">
+    <header class="admin-page-head">
+      <div><p class="eyebrow">CONTENT</p><h1>页面列表</h1><p>管理独立页面、草稿及其语言版本。</p></div>
+      <a class="button primary" href="<%= adminBasePath %>/pages/new">＋ 新建页面</a>
+    </header>
+    <section class="admin-card post-list">
+      <% if (!pages.length) { %><div class="admin-empty"><span>◇</span><h2>还没有页面</h2><p>创建 About、Contact 或其他独立页面。</p><a class="button primary" href="<%= adminBasePath %>/pages/new">新建页面</a></div><% } %>
+      <% pages.forEach(page => { %>
+        <a class="admin-post" href="<%= adminBasePath %>/pages/<%= page.id %>/edit">
+          <span><strong><%= page.title %></strong><small><%= page.slug %></small></span>
+          <span class="admin-post-meta"><%= page.translation_locales || '—' %><em class="status <%= page.status %>"><%= page.status === 'published' ? '已发布' : '草稿' %></em><b>›</b></span>
+        </a>
+      <% }) %>
+    </section>
+  </main>
+</div>
+<%- include('../partials/footer', { adminLayout: true }) %>

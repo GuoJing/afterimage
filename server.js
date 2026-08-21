@@ -64,6 +64,24 @@ db.exec(`
     body TEXT NOT NULL DEFAULT '',
     UNIQUE(post_id, locale)
   );
+
+  CREATE TABLE IF NOT EXISTS pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS page_translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    locale TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    UNIQUE(page_id, locale)
+  );
 `);
 
 const markdownRenderer = new Renderer();
@@ -207,6 +225,61 @@ app.get('/post/:locale/:slug', (req, res) => {
   });
 });
 
+app.get(/^\/page\/([^/]+)\/([^/]+)\.md$/, (req, res) => {
+  const locale = normalizeLocale(req.params[0]);
+  if (!locale) return res.status(404).type('text').send('Not found');
+  const page = getPageBySlug(req.params[1], locale);
+  if (!page || page.status !== 'published') return res.status(404).type('text').send('Not found');
+  const canonicalUrl = absoluteUrl(pageUrl(page.rendered_locale, page.slug));
+  res.set('Link', `<${canonicalUrl}>; rel="canonical", <${absoluteUrl('/llms.txt')}>; rel="describedby"`);
+  res.type('text/markdown; charset=utf-8').send(renderPageMarkdown(page, canonicalUrl));
+});
+
+app.get('/page/:locale/:slug', (req, res) => {
+  const locale = normalizeLocale(req.params.locale);
+  if (!locale) return res.status(404).render('not-found');
+  setResponseLocale(res, locale);
+  const page = getPageBySlug(req.params.slug, locale);
+  if (!page || (page.status !== 'published' && !req.session.isAdmin)) return res.status(404).render('not-found');
+  const canonicalUrl = absoluteUrl(pageUrl(page.rendered_locale, page.slug));
+  const alternateUrls = page.availableLocales.map(code => ({ locale: code, url: absoluteUrl(pageUrl(code, page.slug)) }));
+  const xDefaultLocale = page.availableLocales.includes(defaultLocale) ? defaultLocale : page.rendered_locale;
+  const markdownUrl = absoluteUrl(`${pageUrl(page.rendered_locale, page.slug)}.md`);
+  const description = articleDescription(page);
+  const image = extractFirstImage(page.body) || absoluteUrl('/apple-touch-icon.png');
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: page.title,
+    description,
+    image,
+    dateModified: sqliteDateToIso(page.updated_at),
+    inLanguage: page.rendered_locale,
+    url: canonicalUrl,
+    publisher: publisherStructuredData(),
+  };
+  if (page.status !== 'published') {
+    res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  }
+  res.render('page', {
+    page,
+    renderMarkdown,
+    description,
+    canonicalUrl,
+    alternateUrls,
+    xDefaultUrl: absoluteUrl(pageUrl(xDefaultLocale, page.slug)),
+    markdownUrl,
+    structuredData,
+    htmlLang: page.rendered_locale,
+    ogType: 'website',
+    ogImage: image,
+    modifiedAt: sqliteDateToIso(page.updated_at),
+    robots: page.status === 'published'
+      ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+      : 'noindex, nofollow, noarchive',
+  });
+});
+
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send([
     'User-agent: *',
@@ -332,6 +405,52 @@ app.post(`${adminBasePath}/posts/:id`, requireAdmin, requireCsrf, (req, res) => 
 app.post(`${adminBasePath}/posts/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
   db.prepare('DELETE FROM posts WHERE id = ?').run(Number(req.params.id));
   res.redirect(adminBasePath);
+});
+
+app.get(`${adminBasePath}/pages`, requireAdmin, (req, res) => {
+  const pages = db.prepare(`
+    SELECT p.*, COALESCE(t.title,
+      (SELECT title FROM page_translations WHERE page_id = p.id ORDER BY id LIMIT 1), p.slug) AS title,
+      (SELECT group_concat(locale, ', ') FROM page_translations WHERE page_id = p.id) AS translation_locales
+    FROM pages p
+    LEFT JOIN page_translations t ON t.page_id = p.id AND t.locale = ?
+    ORDER BY p.updated_at DESC, p.created_at DESC
+  `).all(defaultLocale);
+  res.render('admin/pages', { pages, csrf: req.session.csrf });
+});
+
+app.get(`${adminBasePath}/pages/new`, requireAdmin, (req, res) => {
+  res.render('admin/page-form', { page: emptyPage(), error: null, csrf: req.session.csrf, isNew: true });
+});
+
+app.post(`${adminBasePath}/pages`, requireAdmin, requireCsrf, (req, res) => {
+  try {
+    const pageId = savePage(null, req.body);
+    res.redirect(`${adminBasePath}/pages/${pageId}/edit?saved=1`);
+  } catch (error) {
+    res.status(400).render('admin/page-form', { page: pageFromBody(req.body), error: friendlyError(error), csrf: req.session.csrf, isNew: true });
+  }
+});
+
+app.get(`${adminBasePath}/pages/:id/edit`, requireAdmin, (req, res) => {
+  const page = getPageForAdmin(Number(req.params.id));
+  if (!page) return res.status(404).render('not-found');
+  res.render('admin/page-form', { page, error: null, csrf: req.session.csrf, isNew: false, saved: req.query.saved === '1' });
+});
+
+app.post(`${adminBasePath}/pages/:id`, requireAdmin, requireCsrf, (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    savePage(id, req.body);
+    res.redirect(`${adminBasePath}/pages/${id}/edit?saved=1`);
+  } catch (error) {
+    res.status(400).render('admin/page-form', { page: { ...pageFromBody(req.body), id }, error: friendlyError(error), csrf: req.session.csrf, isNew: false });
+  }
+});
+
+app.post(`${adminBasePath}/pages/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
+  db.prepare('DELETE FROM pages WHERE id = ?').run(Number(req.params.id));
+  res.redirect(`${adminBasePath}/pages`);
 });
 
 app.use((req, res) => {
@@ -536,6 +655,10 @@ function postUrl(locale, slug) {
   return `/post/${encodeURIComponent(locale)}/${encodeURIComponent(slug)}`;
 }
 
+function pageUrl(locale, slug) {
+  return `/page/${encodeURIComponent(locale)}/${encodeURIComponent(slug)}`;
+}
+
 function getPublishedTranslations() {
   return db.prepare(`
     SELECT p.slug, p.published_at, p.updated_at, t.locale, t.title, t.summary, t.body
@@ -546,29 +669,46 @@ function getPublishedTranslations() {
   `).all();
 }
 
+function getPublishedPageTranslations() {
+  return db.prepare(`
+    SELECT p.slug, p.updated_at, t.locale, t.title, t.summary, t.body
+    FROM pages p
+    JOIN page_translations t ON t.page_id = p.id
+    WHERE p.status = 'published'
+    ORDER BY p.slug, t.locale
+  `).all();
+}
+
 function buildSitemap() {
-  const groups = new Map();
-  for (const row of getPublishedTranslations()) {
-    if (!groups.has(row.slug)) groups.set(row.slug, []);
-    groups.get(row.slug).push(row);
-  }
   const urls = [
     `  <url><loc>${escapeXml(absoluteUrl('/'))}</loc></url>`,
   ];
-  for (const translations of groups.values()) {
-    const xDefault = translations.find(row => row.locale === defaultLocale) || translations[0];
-    const alternates = translations.map(row =>
-      `    <xhtml:link rel="alternate" hreflang="${escapeXml(row.locale)}" href="${escapeXml(absoluteUrl(postUrl(row.locale, row.slug)))}" />`
-    );
-    alternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(postUrl(xDefault.locale, xDefault.slug)))}" />`);
-    for (const row of translations) {
-      urls.push([
-        '  <url>',
-        `    <loc>${escapeXml(absoluteUrl(postUrl(row.locale, row.slug)))}</loc>`,
-        `    <lastmod>${escapeXml(sqliteDateToIso(row.updated_at) || row.published_at)}</lastmod>`,
-        ...alternates,
-        '  </url>',
-      ].join('\n'));
+
+  const collections = [
+    { rows: getPublishedTranslations(), urlFor: postUrl },
+    { rows: getPublishedPageTranslations(), urlFor: pageUrl },
+  ];
+  for (const collection of collections) {
+    const groups = new Map();
+    for (const row of collection.rows) {
+      if (!groups.has(row.slug)) groups.set(row.slug, []);
+      groups.get(row.slug).push(row);
+    }
+    for (const translations of groups.values()) {
+      const xDefault = translations.find(row => row.locale === defaultLocale) || translations[0];
+      const alternates = translations.map(row =>
+        `    <xhtml:link rel="alternate" hreflang="${escapeXml(row.locale)}" href="${escapeXml(absoluteUrl(collection.urlFor(row.locale, row.slug)))}" />`
+      );
+      alternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(collection.urlFor(xDefault.locale, xDefault.slug)))}" />`);
+      for (const row of translations) {
+        urls.push([
+          '  <url>',
+          `    <loc>${escapeXml(absoluteUrl(collection.urlFor(row.locale, row.slug)))}</loc>`,
+          `    <lastmod>${escapeXml(sqliteDateToIso(row.updated_at) || row.published_at)}</lastmod>`,
+          ...alternates,
+          '  </url>',
+        ].join('\n'));
+      }
     }
   }
   return [
@@ -585,6 +725,10 @@ function buildLlmsText() {
     const note = articleDescription(row).replace(/\s+/g, ' ');
     return `- [${escapeMarkdownLabel(row.title)}](${absoluteUrl(`${postUrl(row.locale, row.slug)}.md`)}): ${row.locale}; ${note}`;
   });
+  const pages = getPublishedPageTranslations().map(row => {
+    const note = articleDescription(row).replace(/\s+/g, ' ');
+    return `- [${escapeMarkdownLabel(row.title)}](${absoluteUrl(`${pageUrl(row.locale, row.slug)}.md`)}): ${row.locale}; ${note}`;
+  });
   return [
     `# ${blog.title}`,
     '',
@@ -596,6 +740,10 @@ function buildLlmsText() {
     '',
     ...(articles.length ? articles : ['- 暂无已发布文章。']),
     '',
+    '## Pages',
+    '',
+    ...(pages.length ? pages : ['- 暂无已发布页面。']),
+    '',
     '## Optional',
     '',
     `- [完整文章合集](${absoluteUrl('/llms-full.txt')}): 所有已发布语言版本的完整 Markdown 正文。`,
@@ -605,16 +753,20 @@ function buildLlmsText() {
 }
 
 function buildLlmsFullText() {
-  const sections = getPublishedTranslations().map(row => {
+  const articleSections = getPublishedTranslations().map(row => {
     const canonicalUrl = absoluteUrl(postUrl(row.locale, row.slug));
     return renderPostMarkdown(row, canonicalUrl);
   });
+  const pageSections = getPublishedPageTranslations().map(row => {
+    const canonicalUrl = absoluteUrl(pageUrl(row.locale, row.slug));
+    return renderPageMarkdown(row, canonicalUrl);
+  });
   const introduction = [
-    `# ${blog.title} — Full Articles`,
+    `# ${blog.title} — Full Content`,
     '',
     `> ${blog.description.replace(/\s+/g, ' ')}`,
   ].join('\n');
-  return [introduction, ...sections].join('\n\n---\n\n');
+  return [introduction, ...articleSections, ...pageSections].join('\n\n---\n\n');
 }
 
 function renderPostMarkdown(post, canonicalUrl) {
@@ -632,6 +784,20 @@ function renderPostMarkdown(post, canonicalUrl) {
   ].join('\n');
 }
 
+function renderPageMarkdown(page, canonicalUrl) {
+  const summary = String(page.summary || '').trim();
+  return [
+    `# ${page.title}`,
+    '',
+    ...(summary ? [`> ${summary.replace(/\s*\n\s*/g, ' ')}`, ''] : []),
+    `- Language: ${page.rendered_locale || page.locale}`,
+    `- Canonical: ${canonicalUrl}`,
+    '',
+    String(page.body || '').trim(),
+    '',
+  ].join('\n');
+}
+
 function escapeXml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 }
@@ -641,8 +807,10 @@ function escapeMarkdownLabel(value) {
 }
 
 function localizePath(currentPath, locale) {
-  const match = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
-  if (match) return `/post/${encodeURIComponent(locale)}/${match[1]}`;
+  const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
+  if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
+  const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
+  if (pageMatch) return `/page/${encodeURIComponent(locale)}/${pageMatch[1]}`;
   return locale === defaultLocale ? '/' : `/?lang=${encodeURIComponent(locale)}`;
 }
 
@@ -709,6 +877,20 @@ function getPostBySlug(slug, locale) {
   return post ? withLocales(post) : null;
 }
 
+function getPageBySlug(slug, locale) {
+  const page = db.prepare(`
+    SELECT p.*, COALESCE(chosen.title, fallback.title) AS title,
+      COALESCE(chosen.summary, fallback.summary, '') AS summary,
+      COALESCE(chosen.body, fallback.body, '') AS body,
+      CASE WHEN chosen.id IS NULL THEN ? ELSE ? END AS rendered_locale
+    FROM pages p
+    LEFT JOIN page_translations chosen ON chosen.page_id = p.id AND chosen.locale = ?
+    LEFT JOIN page_translations fallback ON fallback.page_id = p.id AND fallback.locale = ?
+    WHERE p.slug = ? AND COALESCE(chosen.id, fallback.id) IS NOT NULL
+  `).get(defaultLocale, locale, locale, defaultLocale, slug);
+  return page ? withPageLocales(page) : null;
+}
+
 function withLocales(post) {
   post.availableLocales = db.prepare('SELECT locale FROM post_translations WHERE post_id = ? ORDER BY locale').all(post.id).map(row => row.locale);
   return post;
@@ -720,6 +902,22 @@ function getPostForAdmin(id) {
   base.translationList = db.prepare(`
     SELECT locale, title, summary, body FROM post_translations
     WHERE post_id = ? ORDER BY CASE WHEN locale = ? THEN 0 ELSE 1 END, locale
+  `).all(id, defaultLocale);
+  if (!base.translationList.length) base.translationList.push({ locale: defaultLocale, title: '', summary: '', body: '' });
+  return base;
+}
+
+function withPageLocales(page) {
+  page.availableLocales = db.prepare('SELECT locale FROM page_translations WHERE page_id = ? ORDER BY locale').all(page.id).map(row => row.locale);
+  return page;
+}
+
+function getPageForAdmin(id) {
+  const base = db.prepare('SELECT * FROM pages WHERE id = ?').get(id);
+  if (!base) return null;
+  base.translationList = db.prepare(`
+    SELECT locale, title, summary, body FROM page_translations
+    WHERE page_id = ? ORDER BY CASE WHEN locale = ? THEN 0 ELSE 1 END, locale
   `).all(id, defaultLocale);
   if (!base.translationList.length) base.translationList.push({ locale: defaultLocale, title: '', summary: '', body: '' });
   return base;
@@ -749,6 +947,19 @@ function postFromBody(body) {
   return { slug: body.slug || '', status: body.status || 'draft', published_at: body.published_at || '', translationList };
 }
 
+function emptyPage() {
+  return {
+    slug: '',
+    status: 'draft',
+    translationList: [{ locale: defaultLocale, title: '', summary: '', body: '' }],
+  };
+}
+
+function pageFromBody(body) {
+  const page = postFromBody(body);
+  return { slug: page.slug, status: page.status, translationList: page.translationList };
+}
+
 const persistPost = db.transaction((id, data) => {
   const slug = String(data.slug || '').trim().replace(/^\/+|\/+$/g, '');
   if (!/^[a-z0-9][a-z0-9_-]*$/i.test(slug)) throw new Error('INVALID_SLUG');
@@ -775,6 +986,31 @@ function savePost(id, data) {
   return persistPost(id, data);
 }
 
+const persistPage = db.transaction((id, data) => {
+  const slug = String(data.slug || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(slug)) throw new Error('INVALID_SLUG');
+  const status = data.status === 'published' ? 'published' : 'draft';
+  let pageId = id;
+  if (id) {
+    db.prepare('UPDATE pages SET slug = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(slug, status, id);
+  } else {
+    pageId = Number(db.prepare('INSERT INTO pages (slug, status) VALUES (?, ?)').run(slug, status).lastInsertRowid);
+  }
+  const translations = parseSubmittedTranslations(data);
+  db.prepare('DELETE FROM page_translations WHERE page_id = ?').run(pageId);
+  const insertTranslation = db.prepare(`
+    INSERT INTO page_translations (page_id, locale, title, summary, body) VALUES (?, ?, ?, ?, ?)
+  `);
+  for (const translation of translations) {
+    insertTranslation.run(pageId, translation.locale, translation.title, translation.summary, translation.body);
+  }
+  return pageId;
+});
+
+function savePage(id, data) {
+  return persistPage(id, data);
+}
+
 function requireAdmin(req, res, next) {
   if (!req.session.isAdmin) return res.redirect(`${adminBasePath}/login?next=${encodeURIComponent(req.originalUrl)}`);
   next();
@@ -797,7 +1033,7 @@ function friendlyError(error) {
   if (error.message === 'INVALID_SLUG') return 'URL 只能包含英文字母、数字、连字符和下划线';
   if (error.message === 'INVALID_LOCALE') return '请选择有效的语言代码';
   if (error.message === 'DUPLICATE_LOCALE') return '同一种语言只能添加一次';
-  if (error.message === 'NO_TRANSLATIONS') return '请至少添加一种语言的文章内容';
+  if (error.message === 'NO_TRANSLATIONS') return '请至少添加一种语言的内容';
   if (error.message.startsWith('MISSING_TITLE:')) return `填写了翻译内容时，标题不能为空（${error.message.split(':')[1]}）`;
   return '保存失败，请检查输入内容';
 }

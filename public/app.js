@@ -60,6 +60,7 @@ function initializeEditor(form) {
   const languageError = form.querySelector('[data-language-error]');
   const template = document.querySelector('#translation-template');
   const detailLayout = form.querySelector('[data-editor-detail-layout]');
+  const publicRoute = form.dataset.publicRoute || '/post';
   const options = new Map([...document.querySelectorAll('#all-language-options option')].map(option => [option.value.toLowerCase(), option.textContent]));
   let nextPanelId = panels.querySelectorAll('[data-panel]').length;
 
@@ -68,7 +69,7 @@ function initializeEditor(form) {
     panels.querySelectorAll('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === panelId));
     const locale = panels.querySelector(`[data-panel="${CSS.escape(panelId)}"] [data-translation-locale]`)?.value;
     const prefix = form.querySelector('[data-url-prefix]');
-    if (locale && prefix) prefix.textContent = `/post/${locale}/`;
+    if (locale && prefix) prefix.textContent = `${publicRoute}/${locale}/`;
     updateViewLink(locale);
   };
 
@@ -158,9 +159,9 @@ function initializeEditor(form) {
   });
 
   function updateViewLink(locale) {
-    const link = form.querySelector('[data-view-post]');
+    const link = form.querySelector('[data-view-content]');
     const slug = form.querySelector('[name="slug"]').value.trim();
-    if (link && locale && slug) link.href = `/post/${encodeURIComponent(locale)}/${encodeURIComponent(slug)}`;
+    if (link && locale && slug) link.href = `${publicRoute}/${encodeURIComponent(locale)}/${encodeURIComponent(slug)}`;
   }
 
   function schedulePreview(textarea) {

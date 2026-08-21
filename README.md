@@ -1,15 +1,17 @@
 # Afterimage Blog
 
-一个极简的 Node.js + SQLite 多语言博客。页面结构参考现有的 AFTERIMAGE PHOTOGRAPHY，第一版只实现文章与 Admin 后台。
+一个极简的 Node.js + SQLite 多语言博客。页面结构参考现有的 AFTERIMAGE PHOTOGRAPHY，包含文章、独立页面与 Admin 后台。
 
 运行环境要求 Node.js 22.12 或更高版本。
 
 ## 已实现
 
 - 带语言的文章 URL：`/post/zh/deep`、`/post/en/deep`
-- SQLite 存储，文章与翻译分表
-- 中文为默认语言；文章 URL 明确包含语言，缺少该语言翻译时回退到默认语言
+- 带语言的页面 URL：`/page/zh/about`、`/page/en/about`
+- SQLite 存储，文章、页面及各自翻译分表
+- 中文为默认语言；内容 URL 明确包含语言，缺少该语言翻译时回退到默认语言
 - Admin 新建、编辑、发布、删除文章
+- Admin 新建、编辑、发布、删除独立页面
 - 管理员可预览草稿，普通访客访问草稿仍返回 404
 - Markdown 正文，支持外链图片和管理员本地图片上传
 - 文章 canonical、hreflang、Open Graph、Twitter Card 与 BlogPosting JSON-LD
@@ -54,7 +56,17 @@ DEFAULT_LOCALE=zh
 BLOG_LOCALES=zh,en,ja,fr
 ```
 
-`BLOG_LOCALES` 控制前台语言菜单，Admin 编辑器则可以为文章添加任意有效语言代码，不受这个列表限制。菜单使用每种语言自己的名称，例如 `中文`、`English`、`日本語`、`français`。某篇文章没有 URL 所指定的语言时，会回退到默认语言；默认语言也不存在时返回 404。
+`BLOG_LOCALES` 控制前台语言菜单，Admin 编辑器则可以为文章或页面添加任意有效语言代码，不受这个列表限制。菜单使用每种语言自己的名称，例如 `中文`、`English`、`日本語`、`français`。内容没有 URL 所指定的语言时，会回退到默认语言；默认语言也不存在时返回 404。
+
+## 独立页面
+
+后台的“页面管理”使用与文章相同的多语言 Markdown 编辑器、图片上传、草稿预览和发布逻辑。页面地址固定为：
+
+```text
+/page/<语言>/<slug>
+```
+
+例如 `/page/zh/about` 与 `/page/en/about` 属于同一个页面的两个语言版本。页面不会出现在首页文章列表中，但已发布页面会进入 Sitemap、llms.txt 和 llms-full.txt，并提供对应的 `.md` 版本。
 
 ## 图片上传
 
@@ -116,10 +128,11 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。
-- `/sitemap.xml` 只列出已发布文章及其实际存在的语言版本。
+- `/sitemap.xml` 只列出已发布文章、页面及其实际存在的语言版本。
 - `/robots.txt` 允许搜索引擎抓取公开内容并声明 Sitemap。
-- `/llms.txt` 提供适合 AI/Agent 发现的文章目录，`/llms-full.txt` 提供完整正文合集。
+- `/llms.txt` 提供适合 AI/Agent 发现的文章与页面目录，`/llms-full.txt` 提供完整正文合集。
 - 每篇文章同时提供纯 Markdown 地址：`/post/<语言>/<slug>.md`。
+- 每个页面同时提供纯 Markdown 地址：`/page/<语言>/<slug>.md`。
 - 草稿、404 和后台页面通过 `noindex` 或 `X-Robots-Tag` 禁止索引。
 
 ## 云端部署

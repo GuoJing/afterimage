@@ -1,29 +1,29 @@
 <%
-  const editorTranslations = Array.isArray(post.translationList)
-    ? post.translationList
-    : Object.entries(post.translations || {}).map(([locale, translation]) => ({ locale, ...translation }));
+  const editorTranslations = Array.isArray(page.translationList)
+    ? page.translationList
+    : Object.entries(page.translations || {}).map(([locale, translation]) => ({ locale, ...translation }));
   if (!editorTranslations.length) editorTranslations.push({ locale: locale || 'zh', title: '', summary: '', body: '' });
   const editorLanguageName = typeof languageName === 'function' ? languageName : code => code.toUpperCase();
   const editorLanguageOptions = typeof languageOptions !== 'undefined' ? languageOptions : locales;
 %>
-<%- include('../partials/head', { pageTitle: isNew ? '新建文章' : '编辑文章', adminLayout: true }) %>
+<%- include('../partials/head', { pageTitle: isNew ? '新建页面' : '编辑页面', adminLayout: true }) %>
 <div class="admin-layout">
-  <%- include('sidebar', { adminSection: 'posts' }) %>
+  <%- include('sidebar', { adminSection: 'pages' }) %>
   <main class="admin-content admin-editor-page">
     <header class="admin-page-head editor-page-head">
-      <div><p class="eyebrow">CONTENT / POSTS</p><h1><%= isNew ? '新建文章' : '编辑文章' %></h1><p>专注写作，发布设置集中在右侧。</p></div>
+      <div><p class="eyebrow">CONTENT / PAGES</p><h1><%= isNew ? '新建页面' : '编辑页面' %></h1><p>页面使用与文章相同的多语言 Markdown 编辑体验。</p></div>
     </header>
-    <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">文章已保存</p><% } %>
+    <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">页面已保存</p><% } %>
     <% if (error) { %><p class="form-error"><%= error %></p><% } %>
 
-    <form class="editor-form" action="<%= isNew ? `${adminBasePath}/posts` : `${adminBasePath}/posts/${post.id}` %>" method="post" data-editor-form data-public-route="/post" data-preview-url="<%= adminBasePath %>/preview" data-image-upload-url="<%= imageUploadUrl %>" data-image-max-bytes="<%= imageMaxBytes %>">
+    <form class="editor-form" action="<%= isNew ? `${adminBasePath}/pages` : `${adminBasePath}/pages/${page.id}` %>" method="post" data-editor-form data-public-route="/page" data-preview-url="<%= adminBasePath %>/preview" data-image-upload-url="<%= imageUploadUrl %>" data-image-max-bytes="<%= imageMaxBytes %>">
       <input type="hidden" name="csrf" value="<%= csrf %>" data-csrf>
       <div class="editor-detail-layout" data-editor-detail-layout>
         <div class="editor-primary">
           <section class="admin-card url-card">
-            <label class="slug-setting">文章 URL
-              <div class="slug-input"><span data-url-prefix>/post/<%= editorTranslations[0].locale %>/</span><input name="slug" value="<%= post.slug %>" placeholder="something" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required></div>
-              <small>只填写最后一段，例如 photography-notes</small>
+            <label class="slug-setting">页面 URL
+              <div class="slug-input"><span data-url-prefix>/page/<%= editorTranslations[0].locale %>/</span><input name="slug" value="<%= page.slug %>" placeholder="about" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required></div>
+              <small>只填写最后一段，例如 about 或 contact</small>
             </label>
           </section>
 
@@ -48,7 +48,7 @@
                 <input type="hidden" name="translation_locale" value="<%= item.locale %>" data-translation-locale>
                 <div class="translation-heading"><div><span>语言版本</span><strong data-language-label><%= editorLanguageName(item.locale) %> · <%= item.locale.toUpperCase() %></strong></div><button type="button" class="remove-language" data-remove-language>移除此语言</button></div>
                 <label>标题<input name="translation_title" value="<%= item.title || '' %>" required></label>
-                <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于文章列表和搜索引擎；留空时会从正文自动提取"><%= item.summary || '' %></textarea></label>
+                <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于搜索引擎；留空时会从正文自动提取"><%= item.summary || '' %></textarea></label>
                 <label class="content-label">内容</label>
                 <div class="markdown-workspace">
                   <div class="markdown-source" data-markdown-source>
@@ -63,21 +63,20 @@
         </div>
 
         <aside class="editor-inspector" data-editor-inspector>
-          <button type="button" class="inspector-toggle" data-toggle-editor-sidebar aria-label="收起文章设置">›</button>
+          <button type="button" class="inspector-toggle" data-toggle-editor-sidebar aria-label="收起页面设置">›</button>
           <div class="inspector-content">
-            <div class="inspector-heading"><p class="eyebrow">SETTINGS</p><h2>文章设置</h2></div>
-            <label>状态<select name="status"><option value="draft" <%= post.status === 'draft' ? 'selected' : '' %>>草稿</option><option value="published" <%= post.status === 'published' ? 'selected' : '' %>>已发布</option></select></label>
-            <label>发布日期<input name="published_at" type="datetime-local" value="<%= post.published_at ? new Date(post.published_at).toISOString().slice(0,16) : '' %>" required></label>
+            <div class="inspector-heading"><p class="eyebrow">SETTINGS</p><h2>页面设置</h2></div>
+            <label>状态<select name="status"><option value="draft" <%= page.status === 'draft' ? 'selected' : '' %>>草稿</option><option value="published" <%= page.status === 'published' ? 'selected' : '' %>>已发布</option></select></label>
             <div class="inspector-actions">
-              <% if (!isNew) { %><a class="button" target="_blank" href="/post/<%= editorTranslations[0].locale %>/<%= post.slug %>" data-view-content>查看文章 ↗</a><% } %>
-              <button class="primary" type="submit">保存文章</button>
-              <% if (!isNew) { %><button class="danger" type="submit" form="delete-post" data-confirm="确定删除这篇文章吗？">删除文章</button><% } %>
+              <% if (!isNew) { %><a class="button" target="_blank" href="/page/<%= editorTranslations[0].locale %>/<%= page.slug %>" data-view-content>查看页面 ↗</a><% } %>
+              <button class="primary" type="submit">保存页面</button>
+              <% if (!isNew) { %><button class="danger" type="submit" form="delete-page" data-confirm="确定删除这个页面吗？">删除页面</button><% } %>
             </div>
           </div>
         </aside>
       </div>
     </form>
-    <% if (!isNew) { %><form id="delete-post" action="<%= adminBasePath %>/posts/<%= post.id %>/delete" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"></form><% } %>
+    <% if (!isNew) { %><form id="delete-page" action="<%= adminBasePath %>/pages/<%= page.id %>/delete" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"></form><% } %>
   </main>
 </div>
 
@@ -86,7 +85,7 @@
     <input type="hidden" name="translation_locale" value="" data-translation-locale>
     <div class="translation-heading"><div><span>语言版本</span><strong data-language-label></strong></div><button type="button" class="remove-language" data-remove-language>移除此语言</button></div>
     <label>标题<input name="translation_title" value="" required></label>
-    <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于文章列表和搜索引擎；留空时会从正文自动提取"></textarea></label>
+    <label class="translation-summary">摘要<textarea name="translation_summary" rows="4" placeholder="用于搜索引擎；留空时会从正文自动提取"></textarea></label>
     <label class="content-label">内容</label>
     <div class="markdown-workspace">
       <div class="markdown-source" data-markdown-source>
