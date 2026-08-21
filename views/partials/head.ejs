@@ -39,8 +39,8 @@
   <meta name="twitter:description" content="<%= resolvedDescription %>">
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=6">
-  <script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}</script>
+  <link rel="stylesheet" href="/style.css?v=8">
+  <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">
 <% if (!(typeof adminLayout !== 'undefined' && adminLayout)) { %>
@@ -56,8 +56,8 @@
           <% }) %>
         </div>
       </details>
-      <button class="theme-button" type="button" data-theme-toggle aria-label="切换明暗主题">
-        <span class="sun">☀</span><span class="moon">◐</span>
+      <button class="theme-button" type="button" data-theme-toggle aria-label="切换明暗主题" aria-pressed="false">
+        <span class="sun" aria-hidden="true">☀</span><span class="moon" aria-hidden="true">☾</span>
       </button>
     </div>
   </div>

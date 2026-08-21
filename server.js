@@ -6,7 +6,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import Database from 'better-sqlite3';
 import express from 'express';
 import session from 'express-session';
-import { marked } from 'marked';
+import { Lexer, marked, Renderer } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,7 +66,17 @@ db.exec(`
   );
 `);
 
-marked.setOptions({ gfm: true, breaks: false });
+const markdownRenderer = new Renderer();
+markdownRenderer.paragraph = function renderParagraph(token) {
+  if (!isImageOnlyParagraph(token)) return `<p>${this.parser.parseInline(token.tokens)}</p>\n`;
+  const rows = token.raw
+    .split(/\r?\n/)
+    .filter(line => line.trim())
+    .map(line => `<span class="image-row">${this.parser.parseInline(Lexer.lexInline(line, this.options))}</span>`)
+    .join('');
+  return `<div class="image-stack">${rows}</div>\n`;
+};
+marked.setOptions({ gfm: true, breaks: false, renderer: markdownRenderer });
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -652,10 +662,22 @@ function pickLocale(req) {
 function renderMarkdown(markdown) {
   return sanitizeHtml(marked.parse(markdown || ''), {
     allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'figure', 'figcaption']),
-    allowedAttributes: { ...sanitizeHtml.defaults.allowedAttributes, img: ['src', 'alt', 'title', 'loading'] },
+    allowedAttributes: {
+      ...sanitizeHtml.defaults.allowedAttributes,
+      div: ['class'],
+      span: ['class'],
+      img: ['src', 'alt', 'title', 'loading'],
+    },
+    allowedClasses: { div: ['image-stack'], span: ['image-row'] },
     allowedSchemes: ['http', 'https', 'mailto'],
     transformTags: { img: sanitizeHtml.simpleTransform('img', { loading: 'lazy' }) },
   });
+}
+
+function isImageOnlyParagraph(token) {
+  return token.tokens.length > 0 && token.tokens.every(item =>
+    item.type === 'image' || (item.type === 'text' && !item.raw.trim())
+  );
 }
 
 function getPublishedPosts(locale) {

@@ -98,6 +98,21 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 
 图片 URL 使用随机文件名并按年月分目录，可以安全设置长期浏览器/CDN 缓存。本地模式保存相对 URL；Spaces 模式保存 `SPACES_PUBLIC_URL` 下的完整 CDN URL。
 
+图片排版由 Markdown 中是否换行决定。同一行的图片会尽量并排显示：
+
+```markdown
+![left](/uploads/example-left.jpg) ![right](/uploads/example-right.jpg)
+```
+
+图片之间按回车则上下排列：
+
+```markdown
+![top](/uploads/example-top.jpg)
+![bottom](/uploads/example-bottom.jpg)
+```
+
+文章详情页中的正文图片可点击放大；灯箱使用半透明黑色背景，可点击右上角关闭按钮、遮罩空白区域或按 `Esc` 关闭。大图最大为视口宽度的 80% 和视口高度的 86%，小图不会被强制放大。
+
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。

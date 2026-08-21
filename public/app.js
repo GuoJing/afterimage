@@ -1,10 +1,21 @@
 const root = document.documentElement;
 const themeButton = document.querySelector('[data-theme-toggle]');
+syncThemeButton();
 themeButton?.addEventListener('click', () => {
   const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
   root.dataset.theme = next;
   localStorage.setItem('theme', next);
+  syncThemeButton();
 });
+
+function syncThemeButton() {
+  if (!themeButton) return;
+  const isDark = root.dataset.theme === 'dark';
+  themeButton.dataset.currentTheme = isDark ? 'dark' : 'light';
+  themeButton.setAttribute('aria-pressed', String(isDark));
+  themeButton.setAttribute('aria-label', isDark ? '当前为深色模式，切换到浅色模式' : '当前为浅色模式，切换到深色模式');
+  themeButton.title = isDark ? '当前：深色模式' : '当前：浅色模式';
+}
 
 const adminLayout = document.querySelector('.admin-layout');
 if (adminLayout) {
@@ -20,6 +31,8 @@ document.querySelectorAll('[data-confirm]').forEach(button => {
     if (!window.confirm(button.dataset.confirm)) event.preventDefault();
   });
 });
+
+initializeImageLightbox();
 
 const editorForm = document.querySelector('[data-editor-form]');
 if (editorForm) initializeEditor(editorForm);
@@ -258,6 +271,70 @@ function hasDraggedFiles(event) {
 function markdownAlt(filename) {
   const name = String(filename || 'image').replace(/\.[^.]+$/, '') || 'image';
   return name.replaceAll('\\', '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]').replace(/[\r\n]+/g, ' ').trim();
+}
+
+function initializeImageLightbox() {
+  const images = [...document.querySelectorAll('.post-detail .prose img')];
+  if (!images.length) return;
+
+  const lightbox = document.createElement('div');
+  lightbox.className = 'image-lightbox';
+  lightbox.hidden = true;
+  lightbox.setAttribute('role', 'dialog');
+  lightbox.setAttribute('aria-modal', 'true');
+  lightbox.setAttribute('aria-label', '图片预览');
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'image-lightbox-close';
+  closeButton.setAttribute('aria-label', '关闭图片预览');
+  closeButton.textContent = '×';
+
+  const preview = document.createElement('img');
+  preview.alt = '';
+  lightbox.append(closeButton, preview);
+  document.body.append(lightbox);
+
+  let sourceImage = null;
+  const open = image => {
+    sourceImage = image;
+    preview.src = image.currentSrc || image.src;
+    preview.alt = image.alt || '';
+    lightbox.hidden = false;
+    document.body.classList.add('image-lightbox-open');
+    closeButton.focus();
+  };
+  const close = () => {
+    if (lightbox.hidden) return;
+    lightbox.hidden = true;
+    document.body.classList.remove('image-lightbox-open');
+    preview.removeAttribute('src');
+    sourceImage?.focus({ preventScroll: true });
+    sourceImage = null;
+  };
+
+  images.forEach(image => {
+    image.tabIndex = 0;
+    image.setAttribute('role', 'button');
+    image.setAttribute('aria-label', image.alt ? `放大图片：${image.alt}` : '放大图片');
+    image.addEventListener('click', event => {
+      event.preventDefault();
+      open(image);
+    });
+    image.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      open(image);
+    });
+  });
+
+  closeButton.addEventListener('click', close);
+  lightbox.addEventListener('click', event => {
+    if (event.target === lightbox) close();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !lightbox.hidden) close();
+  });
 }
 
 function normalizeLocale(value) {
