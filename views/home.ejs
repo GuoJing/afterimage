@@ -1,17 +1,21 @@
 <%- include('partials/head', { pageTitle: '', description: blog.description }) %>
-<main class="main inner">
+<main class="main inner home-page content-layout-page">
   <% if (posts.length) { const featured = posts[0]; %>
-    <article class="post featured" lang="<%= featured.rendered_locale %>">
-      <h1><a href="<%= postUrl(featured.slug) %>"><%= featured.title %></a></h1>
-      <div class="prose"><%- renderMarkdown(featured.body) %></div>
+    <article class="post featured content-grid" lang="<%= featured.rendered_locale %>">
       <a class="published" href="<%= postUrl(featured.slug) %>"><time datetime="<%= featured.published_at %>"><%= formatDate(featured.published_at) %></time></a>
+      <div class="content-column">
+        <h1><a href="<%= postUrl(featured.slug) %>"><%= featured.title %></a></h1>
+        <div class="prose"><%- renderMarkdown(featured.body) %></div>
+      </div>
     </article>
 
     <% posts.slice(1).forEach(post => { %>
-      <article class="post-item" lang="<%= post.rendered_locale %>">
-        <h2><a href="<%= postUrl(post.slug) %>"><%= post.title %></a></h2>
-        <p><%= post.summary || post.body.replace(/[#_*`>\[\]()!-]/g, '').slice(0, 180) %></p>
+      <article class="post-item content-grid" lang="<%= post.rendered_locale %>">
         <a class="published" href="<%= postUrl(post.slug) %>"><time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time></a>
+        <div class="content-column">
+          <h2><a href="<%= postUrl(post.slug) %>"><%= post.title %></a></h2>
+          <p><%= post.summary || post.body.replace(/[#_*`>\[\]()!-]/g, '').slice(0, 180) %></p>
+        </div>
       </article>
     <% }) %>
   <% } %>
