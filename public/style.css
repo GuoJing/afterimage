@@ -163,9 +163,6 @@ body.image-lightbox-open { overflow: hidden; }
 .post-item p { margin: 1em 0; color: var(--text); }
 .archive-main { min-height: calc(100vh - 146px); padding: 64px 24px 48px; font-family: var(--text-font); }
 .archive-inner { max-width: 1200px; margin: 0 auto; }
-.archive-heading { max-width: 760px; margin: 0 0 30px 136px; }
-.archive-heading h1 { margin: 5px 0 8px; color: var(--strong); font-size: clamp(32px, 4vw, 46px); letter-spacing: -.035em; }
-.archive-heading > p:last-child { margin: 0; color: var(--light); }
 .archive-list { max-width: 896px; border-top: 1px solid var(--line); }
 .archive-item { display: grid; grid-template-columns: 112px minmax(0, 760px); gap: 24px; padding: 36px 0 38px; border-bottom: 1px solid var(--line); }
 .archive-item time { padding-top: 3px; color: var(--light); font-size: 18px; font-weight: 400; font-variant-numeric: tabular-nums; }
@@ -238,7 +235,6 @@ input:focus, textarea:focus, select:focus { border-color:var(--light); box-shado
   .content-grid > .published { margin-top: 0; font-size: 14px; }
   .article-signature { margin-top: 32px; }
   .archive-main { padding: 38px 16px 32px; }
-  .archive-heading { margin: 0 0 24px; }
   .archive-item { grid-template-columns: 1fr; gap: 10px; padding: 26px 0 28px; }
   .archive-item time { font-size: 14px; }
   .archive-item h2 { font-size: 23px; }
