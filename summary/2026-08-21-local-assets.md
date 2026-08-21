@@ -4,6 +4,8 @@
 
 > 旧站精确复核：根据 `afterimage.typlog.io/posts/deep` 使用的 Meguro 0.5.0 与 Yue 1.0.0 CSS，文章标题继承 `Source Sans Pro` 文本字体链，但 `.e-content.yue` 正文会切回系统/CJK 基础字体链。图片组上下边距为 `1.64em`，组内图片通过两侧 `3px` padding 形成 `6px` 间距，连续 gallery 使用 `margin-top:-1.5em` 压缩纵向空白。本项目已用本地 `.image-stack/.image-row` 等价实现，并同步中文强调、标题层级、引用、列表和图注规则；没有引用 Typlog 的 CSS、JS 或字体资源。
 
+> 字重修正：旧站公共 CSS 对 `body` 使用 `text-rendering: optimizeLegibility`、WebKit antialiasing 和 Firefox grayscale；本项目现已同步。文章标题从错误的 `900` 调整为旧站实际呈现的 `700`，正文保持默认 `400`，只有 Logo 继续使用旧站规定的 `900`。
+
 日期：2026-08-21
 
 ## 检查结论
