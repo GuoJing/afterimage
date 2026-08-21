@@ -18,11 +18,11 @@ if (process.env.NODE_ENV === 'production' && (!process.env.ADMIN_PASSWORD || !pr
   throw new Error('生产环境必须设置 ADMIN_PASSWORD 和 SESSION_SECRET');
 }
 const defaultLocale = normalizeLocale(process.env.DEFAULT_LOCALE || 'zh');
-const configuredLocales = [...new Set((process.env.BLOG_LOCALES || 'zh,en').split(',').map(normalizeLocale).filter(Boolean))];
+const configuredLocales = [...new Set((process.env.BLOG_LOCALES || 'zh,en,ja').split(',').map(normalizeLocale).filter(Boolean))];
 if (!defaultLocale) throw new Error('DEFAULT_LOCALE 不是有效的语言代码');
 if (!configuredLocales.includes(defaultLocale)) configuredLocales.unshift(defaultLocale);
 
-const localeNames = new Intl.DisplayNames([defaultLocale], { type: 'language' });
+const nativeLanguageNames = new Map();
 const languageOptions = buildLanguageOptions();
 const blog = {
   title: process.env.BLOG_TITLE || 'AFTERIMAGE PHOTOGRAPHY',
@@ -112,9 +112,9 @@ app.use((req, res, next) => {
   res.locals.blog = blog;
   res.locals.siteUrl = siteUrl;
   res.locals.siteImageUrl = absoluteUrl('/apple-touch-icon.png');
-  res.locals.locales = configuredLocales.map(code => ({ code, name: localeNames.of(code) || code }));
+  res.locals.locales = configuredLocales.map(code => ({ code, name: languageName(code) }));
   res.locals.languageOptions = languageOptions;
-  res.locals.languageName = code => localeNames.of(code) || code;
+  res.locals.languageName = languageName;
   res.locals.adminBasePath = adminBasePath;
   res.locals.currentPath = req.path;
   res.locals.canonicalUrl = absoluteUrl(req.path);
@@ -833,11 +833,23 @@ function buildLanguageOptions() {
   for (let first = 97; first <= 122; first += 1) {
     for (let second = 97; second <= 122; second += 1) {
       const code = String.fromCharCode(first, second);
-      const name = localeNames.of(code);
+      const name = languageName(code);
       if (name && name.toLowerCase() !== code) codes.add(code);
     }
   }
   return [...codes]
-    .map(code => ({ code, name: localeNames.of(code) || code }))
+    .map(code => ({ code, name: languageName(code) }))
     .sort((left, right) => left.name.localeCompare(right.name, defaultLocale));
+}
+
+function languageName(code) {
+  const locale = normalizeLocale(code);
+  if (!locale) return String(code || '').toUpperCase();
+  if (nativeLanguageNames.has(locale)) return nativeLanguageNames.get(locale);
+  let name = locale.toUpperCase();
+  try {
+    name = new Intl.DisplayNames([locale], { type: 'language' }).of(locale) || name;
+  } catch {}
+  nativeLanguageNames.set(locale, name);
+  return name;
 }

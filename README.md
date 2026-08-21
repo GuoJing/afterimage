@@ -41,10 +41,10 @@ npm run dev
 
 ## 多语言
 
-默认站点语言菜单显示中文和英文：
+默认站点语言菜单显示中文、English 和日本語；每种语言使用自己的语言名称展示：
 
 ```env
-BLOG_LOCALES=zh,en
+BLOG_LOCALES=zh,en,ja
 DEFAULT_LOCALE=zh
 ```
 
@@ -54,7 +54,7 @@ DEFAULT_LOCALE=zh
 BLOG_LOCALES=zh,en,ja,fr
 ```
 
-`BLOG_LOCALES` 控制前台语言菜单，Admin 编辑器则可以为文章添加任意有效语言代码，不受这个列表限制。某篇文章没有 URL 所指定的语言时，会回退到默认语言；默认语言也不存在时返回 404。
+`BLOG_LOCALES` 控制前台语言菜单，Admin 编辑器则可以为文章添加任意有效语言代码，不受这个列表限制。菜单使用每种语言自己的名称，例如 `中文`、`English`、`日本語`、`français`。某篇文章没有 URL 所指定的语言时，会回退到默认语言；默认语言也不存在时返回 404。
 
 ## 图片上传
 

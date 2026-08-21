@@ -17,6 +17,21 @@ function syncThemeButton() {
   themeButton.title = isDark ? '当前：深色模式' : '当前：浅色模式';
 }
 
+const languageMenu = document.querySelector('.language-menu');
+if (languageMenu) {
+  document.addEventListener('click', event => {
+    if (languageMenu.open && !languageMenu.contains(event.target)) languageMenu.open = false;
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !languageMenu.open) return;
+    languageMenu.open = false;
+    languageMenu.querySelector('summary')?.focus();
+  });
+  languageMenu.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
+    languageMenu.open = false;
+  }));
+}
+
 const adminLayout = document.querySelector('.admin-layout');
 if (adminLayout) {
   try { adminLayout.classList.toggle('sidebar-collapsed', localStorage.getItem('admin-sidebar') === 'collapsed'); } catch {}
@@ -281,18 +296,42 @@ function initializeImageLightbox() {
   closeButton.type = 'button';
   closeButton.className = 'image-lightbox-close';
   closeButton.setAttribute('aria-label', '关闭图片预览');
-  closeButton.textContent = '×';
+
+  const previousButton = document.createElement('button');
+  previousButton.type = 'button';
+  previousButton.className = 'image-lightbox-nav image-lightbox-previous';
+  previousButton.setAttribute('aria-label', '查看上一张图片');
+
+  const nextButton = document.createElement('button');
+  nextButton.type = 'button';
+  nextButton.className = 'image-lightbox-nav image-lightbox-next';
+  nextButton.setAttribute('aria-label', '查看下一张图片');
+
+  const counter = document.createElement('span');
+  counter.className = 'image-lightbox-counter';
+  counter.setAttribute('aria-live', 'polite');
 
   const preview = document.createElement('img');
   preview.alt = '';
-  lightbox.append(closeButton, preview);
+  lightbox.append(closeButton, previousButton, preview, nextButton, counter);
   document.body.append(lightbox);
 
   let sourceImage = null;
+  let currentIndex = 0;
+  const multipleImages = images.length > 1;
+  previousButton.hidden = !multipleImages;
+  nextButton.hidden = !multipleImages;
+  counter.hidden = !multipleImages;
+
+  const show = index => {
+    currentIndex = (index + images.length) % images.length;
+    sourceImage = images[currentIndex];
+    preview.src = sourceImage.currentSrc || sourceImage.src;
+    preview.alt = sourceImage.alt || '';
+    counter.textContent = `${currentIndex + 1} / ${images.length}`;
+  };
   const open = image => {
-    sourceImage = image;
-    preview.src = image.currentSrc || image.src;
-    preview.alt = image.alt || '';
+    show(images.indexOf(image));
     lightbox.hidden = false;
     document.body.classList.add('image-lightbox-open');
     closeButton.focus();
@@ -322,11 +361,22 @@ function initializeImageLightbox() {
   });
 
   closeButton.addEventListener('click', close);
+  previousButton.addEventListener('click', () => show(currentIndex - 1));
+  nextButton.addEventListener('click', () => show(currentIndex + 1));
   lightbox.addEventListener('click', event => {
     if (event.target === lightbox) close();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !lightbox.hidden) close();
+    if (lightbox.hidden) return;
+    if (event.key === 'Escape') close();
+    if (event.key === 'ArrowLeft' && multipleImages) {
+      event.preventDefault();
+      show(currentIndex - 1);
+    }
+    if (event.key === 'ArrowRight' && multipleImages) {
+      event.preventDefault();
+      show(currentIndex + 1);
+    }
   });
 }
 
