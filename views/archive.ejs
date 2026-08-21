@@ -1,0 +1,23 @@
+<%- include('partials/head', { pageTitle: archiveTitle, description }) %>
+<main class="archive-main">
+  <div class="archive-inner">
+    <header class="archive-heading">
+      <p class="eyebrow">POSTS</p>
+      <h1><%= archiveTitle %></h1>
+      <p><%= description %></p>
+    </header>
+    <section class="archive-list" aria-label="<%= archiveTitle %>">
+      <% if (!posts.length) { %><p class="archive-empty"><%= locale === 'zh' ? '暂时没有已发布文章。' : locale === 'ja' ? '公開済みの記事はまだありません。' : 'No published posts yet.' %></p><% } %>
+      <% posts.forEach(post => { %>
+        <article class="archive-item" lang="<%= post.rendered_locale %>">
+          <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
+          <div class="archive-item-content">
+            <h2><a href="/post/<%= post.rendered_locale %>/<%= post.slug %>"><%= post.title %></a></h2>
+            <% const excerpt = archiveExcerpt(post); if (excerpt) { %><p><%= excerpt %></p><% } %>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </div>
+</main>
+<%- include('partials/footer') %>

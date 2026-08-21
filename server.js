@@ -29,6 +29,11 @@ const blog = {
   description: process.env.BLOG_DESCRIPTION || '一个关于摄影、观看与生活的个人博客。',
   author: process.env.BLOG_AUTHOR || process.env.BLOG_TITLE || 'AFTERIMAGE PHOTOGRAPHY',
 };
+const archiveCopy = {
+  zh: { title: '归档', description: '按时间浏览所有已发布文章。' },
+  en: { title: 'Archive', description: 'Browse all published posts by date.' },
+  ja: { title: 'アーカイブ', description: '公開済みの記事を日付順に表示します。' },
+};
 
 const imageStorage = String(process.env.IMAGE_STORAGE || 'local').trim().toLowerCase();
 if (!['local', 'spaces'].includes(imageStorage)) throw new Error('IMAGE_STORAGE 只能是 local 或 spaces');
@@ -176,6 +181,51 @@ app.get('/', (req, res) => {
     publisher: publisherStructuredData(),
   };
   res.render('home', { posts, renderMarkdown, canonicalUrl, alternateUrls, xDefaultUrl: absoluteUrl('/'), structuredData });
+});
+
+app.get('/archive', (req, res) => {
+  const locale = parameterLocale(req);
+  setResponseLocale(res, locale);
+  const posts = getPublishedPostsByExactLocale(locale);
+  const title = archiveTitle(locale);
+  const description = archiveDescription(locale);
+  const canonicalUrl = absoluteUrl(archivePath(locale));
+  const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(archivePath(code)) }));
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: title,
+    description,
+    inLanguage: locale,
+    url: canonicalUrl,
+    isPartOf: { '@type': 'WebSite', name: blog.title, url: absoluteUrl('/') },
+    mainEntity: {
+      '@type': 'ItemList',
+      itemListElement: posts.map((post, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: absoluteUrl(postUrl(locale, post.slug)),
+        name: post.title,
+      })),
+    },
+  };
+  res.render('archive', {
+    posts,
+    archiveTitle: title,
+    archiveExcerpt,
+    description,
+    canonicalUrl,
+    alternateUrls,
+    xDefaultUrl: absoluteUrl(archivePath(defaultLocale)),
+    structuredData,
+    htmlLang: locale,
+  });
+});
+
+app.get('/feed.xml', (req, res) => {
+  const locale = parameterLocale(req);
+  const posts = getPublishedPostsByExactLocale(locale);
+  res.type('application/rss+xml; charset=utf-8').send(buildRssFeed(locale, posts));
 });
 
 app.get(/^\/post\/([^/]+)\/([^/]+)\.md$/, (req, res) => {
@@ -671,6 +721,26 @@ function homePath(locale) {
   return locale === defaultLocale ? '/' : `/?lang=${encodeURIComponent(locale)}`;
 }
 
+function archivePath(locale) {
+  return locale === defaultLocale ? '/archive' : `/archive?lang=${encodeURIComponent(locale)}`;
+}
+
+function feedPath(locale) {
+  return locale === defaultLocale ? '/feed.xml' : `/feed.xml?lang=${encodeURIComponent(locale)}`;
+}
+
+function parameterLocale(req) {
+  return normalizeLocale(req.query.lang) || defaultLocale;
+}
+
+function archiveTitle(locale) {
+  return (archiveCopy[locale] || archiveCopy.en).title;
+}
+
+function archiveDescription(locale) {
+  return (archiveCopy[locale] || archiveCopy.en).description;
+}
+
 function serializeJsonLd(value) {
   return JSON.stringify(value).replaceAll('<', '\\u003c');
 }
@@ -713,6 +783,7 @@ function extractFirstImage(markdown) {
 function setResponseLocale(res, locale) {
   res.locals.locale = locale;
   res.locals.langQuery = locale === defaultLocale ? '' : `?lang=${encodeURIComponent(locale)}`;
+  res.locals.feedUrl = feedPath(locale);
   res.locals.formatDate = formatDate;
   res.locals.postUrl = slug => postUrl(locale, slug);
 }
@@ -754,6 +825,19 @@ function buildSitemap() {
   const urls = [
     `  <url><loc>${escapeXml(absoluteUrl('/'))}</loc></url>`,
   ];
+
+  const archiveAlternates = configuredLocales.map(locale =>
+    `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(absoluteUrl(archivePath(locale)))}" />`
+  );
+  archiveAlternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(archivePath(defaultLocale)))}" />`);
+  for (const locale of configuredLocales) {
+    urls.push([
+      '  <url>',
+      `    <loc>${escapeXml(absoluteUrl(archivePath(locale)))}</loc>`,
+      ...archiveAlternates,
+      '  </url>',
+    ].join('\n'));
+  }
 
   const collections = [
     { rows: getPublishedTranslations(), urlFor: postUrl },
@@ -869,6 +953,70 @@ function renderPageMarkdown(page, canonicalUrl) {
   ].join('\n');
 }
 
+function buildRssFeed(locale, posts) {
+  const selfUrl = absoluteUrl(feedPath(locale));
+  const channelUrl = absoluteUrl(archivePath(locale));
+  const items = posts.map(post => {
+    const url = absoluteUrl(postUrl(locale, post.slug));
+    const excerpt = archiveExcerpt(post, 320);
+    const content = cdata(absolutizeFeedHtml(renderMarkdown(post.body)));
+    return [
+      '    <item>',
+      `      <title>${rssXml(post.title)}</title>`,
+      `      <link>${rssXml(url)}</link>`,
+      `      <guid isPermaLink="true">${rssXml(url)}</guid>`,
+      `      <pubDate>${rssXml(rssDate(post.published_at))}</pubDate>`,
+      `      <description>${rssXml(excerpt)}</description>`,
+      `      <content:encoded><![CDATA[${content}]]></content:encoded>`,
+      '    </item>',
+    ].join('\n');
+  });
+  const latestUpdate = posts.reduce((latest, post) => {
+    const value = sqliteDateToIso(post.updated_at) || post.published_at;
+    const timestamp = new Date(value).getTime();
+    return Number.isNaN(timestamp) || timestamp <= latest.timestamp ? latest : { timestamp, value };
+  }, { timestamp: 0, value: null });
+  const lastBuildDate = latestUpdate.value ? rssDate(latestUpdate.value) : new Date().toUTCString();
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">',
+    '  <channel>',
+    `    <title>${rssXml(`${blog.title} — ${archiveTitle(locale)}`)}</title>`,
+    `    <link>${rssXml(channelUrl)}</link>`,
+    `    <description>${rssXml(archiveDescription(locale))}</description>`,
+    `    <language>${rssXml(locale)}</language>`,
+    `    <lastBuildDate>${rssXml(lastBuildDate)}</lastBuildDate>`,
+    `    <atom:link href="${rssXml(selfUrl)}" rel="self" type="application/rss+xml" />`,
+    ...items,
+    '  </channel>',
+    '</rss>',
+    '',
+  ].join('\n');
+}
+
+function rssDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date(0).toUTCString() : date.toUTCString();
+}
+
+function rssXml(value) {
+  return escapeXml(xmlSafeText(value));
+}
+
+function cdata(value) {
+  return xmlSafeText(value).replaceAll(']]>', ']]]]><![CDATA[>');
+}
+
+function xmlSafeText(value) {
+  return String(value || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+}
+
+function absolutizeFeedHtml(html) {
+  return String(html).replace(/\b(src|href)="(\/(?!\/)[^"]*)"/g, (match, attribute, pathname) => {
+    return `${attribute}="${absoluteUrl(pathname)}"`;
+  });
+}
+
 function escapeXml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 }
@@ -878,6 +1026,7 @@ function escapeMarkdownLabel(value) {
 }
 
 function localizePath(currentPath, locale) {
+  if (currentPath === '/archive') return archivePath(locale);
   const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
   if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
   const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
@@ -932,6 +1081,25 @@ function getPublishedPosts(locale) {
     ORDER BY p.published_at DESC
   `).all(defaultLocale, locale, locale, defaultLocale);
   return rows.map(withLocales);
+}
+
+function getPublishedPostsByExactLocale(locale) {
+  return db.prepare(`
+    SELECT p.*, t.title, t.summary, t.body, t.locale AS rendered_locale
+    FROM posts p
+    JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
+    WHERE p.status = 'published'
+    ORDER BY p.published_at DESC, p.id DESC
+  `).all(locale);
+}
+
+function archiveExcerpt(post, maxLength = 260) {
+  const source = String(post.summary || '').trim() || String(post.body || '');
+  const plainText = sanitizeHtml(marked.parse(source), { allowedTags: [], allowedAttributes: {} })
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (plainText.length <= maxLength) return plainText;
+  return `${plainText.slice(0, maxLength).trimEnd()}……`;
 }
 
 function getPostBySlug(slug, locale) {

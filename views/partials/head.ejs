@@ -17,6 +17,7 @@
   <title><%= resolvedTitle %></title>
   <link rel="icon" href="/favicon.ico" sizes="50x50">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="application/rss+xml" title="<%= blog.title %> RSS (<%= resolvedLang %>)" href="<%= feedUrl %>">
   <link rel="canonical" href="<%= resolvedCanonical %>">
   <% if (typeof alternateUrls !== 'undefined') { alternateUrls.forEach(item => { %><link rel="alternate" hreflang="<%= item.locale %>" href="<%= item.url %>">
   <% }) } %>
@@ -39,7 +40,7 @@
   <meta name="twitter:description" content="<%= resolvedDescription %>">
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=15">
+  <link rel="stylesheet" href="/style.css?v=16">
   <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">

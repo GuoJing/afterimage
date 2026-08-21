@@ -8,6 +8,8 @@
 
 - 带语言的文章 URL：`/post/zh/deep`、`/post/en/deep`
 - 带语言的页面 URL：`/page/zh/about`、`/page/en/about`
+- 多语言文章归档：`/archive`、`/archive?lang=en`
+- 多语言 RSS：`/feed.xml`、`/feed.xml?lang=en`
 - SQLite 存储，文章、页面及各自翻译分表
 - 中文为默认语言；内容 URL 明确包含语言，缺少该语言翻译时回退到默认语言
 - Admin 新建、编辑、发布、删除文章
@@ -80,6 +82,12 @@ BLOG_LOCALES=zh,en,ja,fr
 
 导航显示在站点标题栏下方、文章或页面正文上方。新页面打开的链接自动附带 `noopener noreferrer`，服务端会拒绝 `javascript:` 等不安全 URL。
 
+## 文章归档与 RSS
+
+`/archive` 按发布时间倒序列出中文文章，只显示日期、标题和纯文字摘要，不显示正文图片。通过 `lang` 参数可以查看其他语言版本，例如 `/archive?lang=en` 与 `/archive?lang=ja`。归档只展示实际存在该语言翻译的已发布文章。
+
+RSS 使用相同的语言规则：`/feed.xml` 默认为中文，`/feed.xml?lang=en` 与 `/feed.xml?lang=ja` 分别输出对应语言。每个公开页面的 HTML 都包含当前语言 RSS 的自动发现链接。
+
 ## 图片上传
 
 后台 Markdown 编辑器支持选择、拖拽和粘贴图片。上传成功后会在光标位置自动插入图片 URL，例如：
@@ -140,7 +148,7 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。
-- `/sitemap.xml` 只列出已发布文章、页面及其实际存在的语言版本。
+- `/sitemap.xml` 列出多语言归档，以及已发布文章、页面的实际语言版本。
 - `/robots.txt` 允许搜索引擎抓取公开内容并声明 Sitemap。
 - `/llms.txt` 提供适合 AI/Agent 发现的文章与页面目录，`/llms-full.txt` 提供完整正文合集。
 - 每篇文章同时提供纯 Markdown 地址：`/post/<语言>/<slug>.md`。
