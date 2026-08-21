@@ -14,6 +14,10 @@
       <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
       <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
       <div class="prose"><%- renderMarkdown(post.body) %></div>
+      <footer class="article-signature">
+        <img src="/apple-touch-icon.png" width="42" height="42" alt="<%= blog.title %>">
+        <p>Copyright by <%= blog.author %></p>
+      </footer>
     </div>
   </article>
 </main>
