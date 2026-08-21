@@ -87,6 +87,10 @@ button, input, textarea, select { font: inherit; }
 .inner { max-width: 680px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 .main { min-height: calc(100vh - 100px); padding-top: 64px; padding-bottom: 32px; font-family: var(--text-font); }
 .post { position: relative; padding: 30px 0 20px; }
+.article-detail-page.inner { max-width: 1248px; padding-right: 24px; padding-left: 24px; }
+.article-detail { display: grid; grid-template-columns: 180px minmax(0, 760px); gap: 32px; align-items: start; }
+.article-detail-content { min-width: 0; }
+.article-detail > .published { position: static; width: auto; margin-top: 5px; text-align: left; font-size: 18px; font-variant-numeric: tabular-nums; }
 .post h1 { margin: 0 0 .1em; color: var(--strong); font: 700 1.8em/1.1 var(--font-text); letter-spacing: .02em; }
 .post h1 a { text-decoration: none; }
 .prose { margin-top: 2em; font-family: var(--font-base); line-height: 1.72; overflow-wrap: break-word; }
@@ -173,7 +177,7 @@ body.image-lightbox-open { overflow: hidden; }
 .site-foot a { color: var(--mute); }
 
 @media (min-width: 920px) {
-  .post > .published:not(.static), .post-item > .published { display: block; position: absolute; top: 35px; right: 680px; width: 160px; text-align: right; }
+  .main:not(.article-detail-page) .post > .published:not(.static), .post-item > .published { display: block; position: absolute; top: 35px; right: 680px; width: 160px; text-align: right; }
 }
 
 .admin-shell { width: min(960px, calc(100% - 32px)); min-height: calc(100vh - 101px); margin: 0 auto; padding: 60px 0; }
@@ -226,6 +230,9 @@ input:focus, textarea:focus, select:focus { border-color:var(--light); box-shado
   .site-navigation a { padding-top: 13px; padding-bottom: 11px; font-size: 13px; }
   .logo { max-width:70vw; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   .main { padding-top:36px; }
+  .article-detail-page.inner { padding-right: 16px; padding-left: 16px; }
+  .article-detail { grid-template-columns: 1fr; gap: 15px; }
+  .article-detail > .published { margin-top: 0; font-size: 14px; }
   .archive-main { padding: 38px 16px 32px; }
   .archive-heading { margin-bottom: 24px; }
   .archive-item { grid-template-columns: 1fr; gap: 10px; padding: 26px 0 28px; }
