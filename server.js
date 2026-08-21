@@ -82,6 +82,16 @@ db.exec(`
     body TEXT NOT NULL DEFAULT '',
     UNIQUE(page_id, locale)
   );
+
+  CREATE TABLE IF NOT EXISTS navigation_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    url TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT 'self' CHECK (target IN ('self', 'blank')),
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const markdownRenderer = new Renderer();
@@ -133,6 +143,7 @@ app.use((req, res, next) => {
   res.locals.locales = configuredLocales.map(code => ({ code, name: languageName(code) }));
   res.locals.languageOptions = languageOptions;
   res.locals.languageName = languageName;
+  res.locals.navigationItems = isAdminPath ? [] : getNavigationItems();
   res.locals.adminBasePath = adminBasePath;
   res.locals.currentPath = req.path;
   res.locals.canonicalUrl = absoluteUrl(req.path);
@@ -451,6 +462,66 @@ app.post(`${adminBasePath}/pages/:id`, requireAdmin, requireCsrf, (req, res) => 
 app.post(`${adminBasePath}/pages/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
   db.prepare('DELETE FROM pages WHERE id = ?').run(Number(req.params.id));
   res.redirect(`${adminBasePath}/pages`);
+});
+
+app.get(`${adminBasePath}/navigation`, requireAdmin, (req, res) => {
+  res.render('admin/navigation', {
+    items: getNavigationItems(),
+    navigation: emptyNavigation(),
+    error: null,
+    csrf: req.session.csrf,
+    isNew: true,
+    saved: req.query.saved === '1',
+  });
+});
+
+app.post(`${adminBasePath}/navigation`, requireAdmin, requireCsrf, (req, res) => {
+  try {
+    saveNavigation(null, req.body);
+    res.redirect(`${adminBasePath}/navigation?saved=1`);
+  } catch (error) {
+    res.status(400).render('admin/navigation', {
+      items: getNavigationItems(),
+      navigation: navigationFromBody(req.body),
+      error: friendlyError(error),
+      csrf: req.session.csrf,
+      isNew: true,
+    });
+  }
+});
+
+app.get(`${adminBasePath}/navigation/:id/edit`, requireAdmin, (req, res) => {
+  const navigation = getNavigationItem(Number(req.params.id));
+  if (!navigation) return res.status(404).render('not-found');
+  res.render('admin/navigation', {
+    items: getNavigationItems(),
+    navigation,
+    error: null,
+    csrf: req.session.csrf,
+    isNew: false,
+    saved: req.query.saved === '1',
+  });
+});
+
+app.post(`${adminBasePath}/navigation/:id`, requireAdmin, requireCsrf, (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    saveNavigation(id, req.body);
+    res.redirect(`${adminBasePath}/navigation/${id}/edit?saved=1`);
+  } catch (error) {
+    res.status(400).render('admin/navigation', {
+      items: getNavigationItems(),
+      navigation: { ...navigationFromBody(req.body), id },
+      error: friendlyError(error),
+      csrf: req.session.csrf,
+      isNew: false,
+    });
+  }
+});
+
+app.post(`${adminBasePath}/navigation/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
+  db.prepare('DELETE FROM navigation_items WHERE id = ?').run(Number(req.params.id));
+  res.redirect(`${adminBasePath}/navigation`);
 });
 
 app.use((req, res) => {
@@ -1011,6 +1082,71 @@ function savePage(id, data) {
   return persistPage(id, data);
 }
 
+function getNavigationItems() {
+  return db.prepare(`
+    SELECT id, label, url, target, position
+    FROM navigation_items
+    ORDER BY position ASC, id ASC
+  `).all();
+}
+
+function getNavigationItem(id) {
+  return db.prepare(`
+    SELECT id, label, url, target, position
+    FROM navigation_items
+    WHERE id = ?
+  `).get(id);
+}
+
+function emptyNavigation() {
+  return { label: '', url: '', target: 'self', position: 0 };
+}
+
+function navigationFromBody(body) {
+  return {
+    label: String(body.label || ''),
+    url: String(body.url || ''),
+    target: body.target === 'blank' ? 'blank' : 'self',
+    position: String(body.position ?? '0'),
+  };
+}
+
+function saveNavigation(id, data) {
+  const label = String(data.label || '').trim();
+  if (!label || label.length > 80) throw new Error('INVALID_NAVIGATION_LABEL');
+  const url = normalizeNavigationUrl(data.url);
+  const target = data.target === 'blank' ? 'blank' : 'self';
+  const position = Number(data.position || 0);
+  if (!Number.isInteger(position) || position < -9999 || position > 9999) throw new Error('INVALID_NAVIGATION_POSITION');
+  if (id) {
+    const result = db.prepare(`
+      UPDATE navigation_items
+      SET label = ?, url = ?, target = ?, position = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(label, url, target, position, id);
+    if (!result.changes) throw new Error('NAVIGATION_NOT_FOUND');
+    return id;
+  }
+  return Number(db.prepare(`
+    INSERT INTO navigation_items (label, url, target, position)
+    VALUES (?, ?, ?, ?)
+  `).run(label, url, target, position).lastInsertRowid);
+}
+
+function normalizeNavigationUrl(value) {
+  const url = String(value || '').trim();
+  if (!url || url.length > 2048 || /[\u0000-\u001F\u007F]/.test(url)) throw new Error('INVALID_NAVIGATION_URL');
+  if (url.startsWith('/') && !url.startsWith('//')) return url;
+  if (url.startsWith('#') && !url.includes(' ')) return url;
+  try {
+    const parsed = new URL(url);
+    if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) return parsed.toString();
+  } catch {
+    // The shared error below keeps invalid and unsafe schemes indistinguishable.
+  }
+  throw new Error('INVALID_NAVIGATION_URL');
+}
+
 function requireAdmin(req, res, next) {
   if (!req.session.isAdmin) return res.redirect(`${adminBasePath}/login?next=${encodeURIComponent(req.originalUrl)}`);
   next();
@@ -1035,6 +1171,10 @@ function friendlyError(error) {
   if (error.message === 'DUPLICATE_LOCALE') return '同一种语言只能添加一次';
   if (error.message === 'NO_TRANSLATIONS') return '请至少添加一种语言的内容';
   if (error.message.startsWith('MISSING_TITLE:')) return `填写了翻译内容时，标题不能为空（${error.message.split(':')[1]}）`;
+  if (error.message === 'INVALID_NAVIGATION_LABEL') return '导航名称不能为空，且不能超过 80 个字符';
+  if (error.message === 'INVALID_NAVIGATION_URL') return '请输入站内 / 开头的地址、# 锚点或完整的 HTTP/HTTPS 地址';
+  if (error.message === 'INVALID_NAVIGATION_POSITION') return '排序必须是 -9999 到 9999 之间的整数';
+  if (error.message === 'NAVIGATION_NOT_FOUND') return '这个导航已经不存在';
   return '保存失败，请检查输入内容';
 }
 

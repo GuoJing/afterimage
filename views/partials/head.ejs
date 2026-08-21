@@ -39,7 +39,7 @@
   <meta name="twitter:description" content="<%= resolvedDescription %>">
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=14">
+  <link rel="stylesheet" href="/style.css?v=15">
   <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">
@@ -62,4 +62,13 @@
     </div>
   </div>
 </header>
+<% if (navigationItems.length) { %>
+<nav class="site-navigation" aria-label="全站导航">
+  <div class="site-navigation-inner">
+    <% navigationItems.forEach(item => { const isCurrentNavigation = item.url === currentPath; %>
+      <a class="<%= isCurrentNavigation ? 'active' : '' %>" href="<%= item.url %>"<%- item.target === 'blank' ? ' target="_blank" rel="noopener noreferrer"' : '' %><%- isCurrentNavigation ? ' aria-current="page"' : '' %>><%= item.label %></a>
+    <% }) %>
+  </div>
+</nav>
+<% } %>
 <% } %>

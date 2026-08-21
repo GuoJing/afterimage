@@ -12,6 +12,7 @@
 - 中文为默认语言；内容 URL 明确包含语言，缺少该语言翻译时回退到默认语言
 - Admin 新建、编辑、发布、删除文章
 - Admin 新建、编辑、发布、删除独立页面
+- 全局导航管理，支持自定义名称、URL、排序及当前/新页面打开
 - 管理员可预览草稿，普通访客访问草稿仍返回 404
 - Markdown 正文，支持外链图片和管理员本地图片上传
 - 文章 canonical、hreflang、Open Graph、Twitter Card 与 BlogPosting JSON-LD
@@ -67,6 +68,17 @@ BLOG_LOCALES=zh,en,ja,fr
 ```
 
 例如 `/page/zh/about` 与 `/page/en/about` 属于同一个页面的两个语言版本。页面不会出现在首页文章列表中，但已发布页面会进入 Sitemap、llms.txt 和 llms-full.txt，并提供对应的 `.md` 版本。
+
+## 全局导航
+
+后台“导航管理”可以新增、编辑、排序和删除全站导航。每个导航包含：
+
+- 导航名称
+- URL：支持 `/` 开头的站内地址、`#` 锚点和完整 HTTP/HTTPS 地址
+- 打开方式：当前页面或新页面
+- 排序：数字越小越靠前
+
+导航显示在站点标题栏下方、文章或页面正文上方。新页面打开的链接自动附带 `noopener noreferrer`，服务端会拒绝 `javascript:` 等不安全 URL。
 
 ## 图片上传
 
