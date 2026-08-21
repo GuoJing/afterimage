@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="<%= locale %>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="<%= typeof description !== 'undefined' ? description : blog.description %>">
+  <title><%= typeof pageTitle !== 'undefined' && pageTitle ? `${pageTitle} — ${blog.title}` : blog.title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||''}catch(e){}</script>
+</head>
+<body>
+<header class="site-head">
+  <div class="head-inner">
+    <a class="logo" href="/<%= langQuery %>"><%= blog.title %></a>
+    <div class="head-actions">
+      <details class="language-menu">
+        <summary aria-label="选择语言"><%= locale.toUpperCase() %></summary>
+        <div class="language-popover">
+          <% locales.forEach(item => { %>
+            <a class="<%= item.code === locale ? 'active' : '' %>" href="/language/<%= item.code %>?next=<%= encodeURIComponent(currentPath) %>"><%= item.name %></a>
+          <% }) %>
+        </div>
+      </details>
+      <button class="theme-button" type="button" data-theme-toggle aria-label="切换明暗主题">
+        <span class="sun">☀</span><span class="moon">◐</span>
+      </button>
+    </div>
+  </div>
+</header>

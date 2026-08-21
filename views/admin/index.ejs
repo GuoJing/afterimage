@@ -1,0 +1,17 @@
+<%- include('../partials/head', { pageTitle: 'Admin' }) %>
+<main class="admin-shell">
+  <div class="admin-heading">
+    <div><p class="eyebrow">AFTERIMAGE ADMIN</p><h1>文章</h1></div>
+    <div class="button-row"><a class="button primary" href="/admin/posts/new">新建文章</a><form action="/admin/logout" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"><button type="submit">退出</button></form></div>
+  </div>
+  <section class="panel post-list">
+    <% if (!posts.length) { %><p class="muted">还没有文章。</p><% } %>
+    <% posts.forEach(post => { %>
+      <a class="admin-post" href="/admin/posts/<%= post.id %>/edit">
+        <span><strong><%= post.title %></strong><small>/posts/<%= post.slug %></small></span>
+        <span class="admin-post-meta"><%= post.translation_locales || '—' %><em class="status <%= post.status %>"><%= post.status === 'published' ? '已发布' : '草稿' %></em></span>
+      </a>
+    <% }) %>
+  </section>
+</main>
+<%- include('../partials/footer') %>

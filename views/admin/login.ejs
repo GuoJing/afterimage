@@ -1,0 +1,11 @@
+<%- include('../partials/head', { pageTitle: 'Admin 登录' }) %>
+<main class="admin-shell narrow">
+  <form class="panel login-form" action="/admin/login" method="post">
+    <p class="eyebrow">AFTERIMAGE ADMIN</p>
+    <h1>登录</h1>
+    <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+    <label>密码<input name="password" type="password" autocomplete="current-password" autofocus required></label>
+    <button class="primary" type="submit">进入后台</button>
+  </form>
+</main>
+<%- include('../partials/footer') %>

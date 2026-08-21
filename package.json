@@ -1,0 +1,23 @@
+{
+  "name": "afterimage-blog",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimal multilingual photography blog with a SQLite-backed admin.",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "marked": "^16.2.1",
+    "sanitize-html": "^2.17.0"
+  }
+}

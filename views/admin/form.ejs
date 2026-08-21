@@ -1,0 +1,36 @@
+<%- include('../partials/head', { pageTitle: isNew ? '新建文章' : '编辑文章' }) %>
+<main class="admin-shell">
+  <div class="admin-heading">
+    <div><a class="back" href="/admin">← 所有文章</a><h1><%= isNew ? '新建文章' : '编辑文章' %></h1></div>
+    <% if (!isNew) { %><a class="button" target="_blank" href="/posts/<%= post.slug %>">查看文章</a><% } %>
+  </div>
+  <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">已保存</p><% } %>
+  <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+  <form class="editor-form" action="<%= isNew ? '/admin/posts' : `/admin/posts/${post.id}` %>" method="post">
+    <input type="hidden" name="csrf" value="<%= csrf %>">
+    <section class="panel settings-grid">
+      <label>文章 URL<div class="slug-input"><span>/posts/</span><input name="slug" value="<%= post.slug %>" placeholder="deep" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required></div></label>
+      <label>状态<select name="status"><option value="draft" <%= post.status === 'draft' ? 'selected' : '' %>>草稿</option><option value="published" <%= post.status === 'published' ? 'selected' : '' %>>已发布</option></select></label>
+      <label>发布日期<input name="published_at" type="datetime-local" value="<%= post.published_at ? new Date(post.published_at).toISOString().slice(0,16) : '' %>" required></label>
+    </section>
+
+    <div class="translation-tabs" role="tablist">
+      <% locales.forEach((item, index) => { %><button type="button" class="<%= index === 0 ? 'active' : '' %>" data-tab="<%= item.code %>"><%= item.name %> · <%= item.code.toUpperCase() %></button><% }) %>
+    </div>
+
+    <% locales.forEach((item, index) => { const t = post.translations[item.code] || {}; %>
+      <section class="panel translation-panel <%= index === 0 ? 'active' : '' %>" data-panel="<%= item.code %>">
+        <label>标题<input name="title_<%= item.code %>" value="<%= t.title || '' %>" <%= index === 0 ? 'required' : '' %>></label>
+        <label>摘要<textarea name="summary_<%= item.code %>" rows="3" placeholder="用于文章列表和搜索引擎"><%= t.summary || '' %></textarea></label>
+        <label>正文 · Markdown<textarea class="body-editor" name="body_<%= item.code %>" rows="22" placeholder="支持 Markdown；图片写法：![说明](https://...)"><%= t.body || '' %></textarea></label>
+      </section>
+    <% }) %>
+
+    <div class="editor-actions">
+      <% if (!isNew) { %><button class="danger" type="submit" form="delete-post" data-confirm="确定删除这篇文章吗？">删除</button><% } %>
+      <button class="primary" type="submit">保存文章</button>
+    </div>
+  </form>
+  <% if (!isNew) { %><form id="delete-post" action="/admin/posts/<%= post.id %>/delete" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"></form><% } %>
+</main>
+<%- include('../partials/footer') %>
