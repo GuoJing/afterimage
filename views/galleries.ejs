@@ -20,7 +20,7 @@
                 <h2><%= gallery.name %></h2>
                 <p class="gallery-index-meta">
                   <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
-                  <a href="/page/<%= locale %>/about" rel="author"><%= gallery.author %></a>
+                  <span><%= gallery.author %></span>
                   <span><%= gallery.photo_count %> photos</span>
                 </p>
                 <% if (gallery.description) { %><p class="gallery-index-description"><%= gallery.description %></p><% } %>

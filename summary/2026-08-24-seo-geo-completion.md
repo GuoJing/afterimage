@@ -4,7 +4,7 @@
 
 - 首页按中文、英文、日文生成独立搜索标题、摘要及 initial HTML 中可见的站点介绍。
 - 首页 JSON-LD 建立 `WebSite → Organization → Person` 实体关系；About 页面输出 `Person + WebPage + Organization` 图谱，并支持通过 `BLOG_SOCIAL_URLS` 配置 `sameAs`。
-- 文章作者链接到当前语言 About 页面，分类链接到可索引 Topic 页面；文章 JSON-LD 和 Open Graph 同步增加作者、分类与图片语义。
+- 文章及 Gallery 详情作者链接到当前语言 About 页面，分类链接到可索引 Topic 页面；文章 JSON-LD 和 Open Graph 同步增加作者、分类与图片语义。Collections 列表因整张卡片已经是详情链接，作者保持为纯文本，避免嵌套链接破坏 HTML 结构。
 - 新增 `/topics` 和 `/topics/:slug`。Topic 由现有文章 `category` 自动生成，支持语言选择、canonical、hreflang、CollectionPage/ItemList JSON-LD 和空状态。
 - 文章详情按当前语言和相同分类自动展示最多 4 篇关联内容，形成可抓取的语义内链。
 - Sitemap 补齐各语言首页、Topic 目录和 Topic 详情；`llms.txt` 补充摄影合集及 Topic 入口。
