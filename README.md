@@ -85,6 +85,8 @@ BLOG_LOCALES=zh,en,ja,fr
 
 导航显示在站点标题栏下方、文章或页面正文上方。新页面打开的链接自动附带 `noopener noreferrer`，服务端会拒绝 `javascript:` 等不安全 URL。
 
+文章和独立页面的导航活动状态会忽略 URL 中的语言段。例如导航配置为 `/page/en/about` 时，访问 `/page/zh/about`、`/page/ja/about` 等同一页面的其他语言版本仍会高亮该导航；文章与页面按类型分别匹配，不会因 slug 相同而互相误判。
+
 ## 文章归档与 RSS
 
 `/archive` 按发布时间倒序列出中文文章，只显示日期、标题和纯文字摘要，不显示正文图片。通过 `lang` 参数可以查看其他语言版本，例如 `/archive?lang=en` 与 `/archive?lang=ja`。归档只展示实际存在该语言翻译的已发布文章。

@@ -154,6 +154,7 @@ app.use((req, res, next) => {
   res.locals.languageOptions = languageOptions;
   res.locals.languageName = languageName;
   res.locals.navigationItems = isAdminPath ? [] : getNavigationItems();
+  res.locals.isNavigationActive = isNavigationActive;
   res.locals.adminBasePath = adminBasePath;
   res.locals.currentPath = req.path;
   res.locals.canonicalUrl = absoluteUrl(req.path);
@@ -1376,6 +1377,29 @@ function normalizeNavigationUrl(value) {
     // The shared error below keeps invalid and unsafe schemes indistinguishable.
   }
   throw new Error('INVALID_NAVIGATION_URL');
+}
+
+function isNavigationActive(url, currentPath) {
+  const navigationPath = internalNavigationPath(url);
+  const requestPath = internalNavigationPath(currentPath);
+  if (!navigationPath || !requestPath) return false;
+  if (navigationPath === requestPath) return true;
+
+  const navigationContent = navigationPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);
+  const requestContent = requestPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);
+  return Boolean(
+    navigationContent
+    && requestContent
+    && navigationContent[1] === requestContent[1]
+    && navigationContent[2] === requestContent[2]
+  );
+}
+
+function internalNavigationPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  const pathname = raw.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  return pathname || '/';
 }
 
 function requireAdmin(req, res, next) {

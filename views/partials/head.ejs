@@ -66,7 +66,7 @@
 <% if (navigationItems.length) { %>
 <nav class="site-navigation" aria-label="全站导航">
   <div class="site-navigation-inner">
-    <% navigationItems.forEach(item => { const isCurrentNavigation = item.url === currentPath; %>
+    <% navigationItems.forEach(item => { const isCurrentNavigation = isNavigationActive(item.url, currentPath); %>
       <a class="<%= isCurrentNavigation ? 'active' : '' %>" href="<%= item.url %>"<%- item.target === 'blank' ? ' target="_blank" rel="noopener noreferrer"' : '' %><%- isCurrentNavigation ? ' aria-current="page"' : '' %>><%= item.label %></a>
     <% }) %>
   </div>
