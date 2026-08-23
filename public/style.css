@@ -138,7 +138,6 @@ button, input, textarea, select { font: inherit; }
 .post-meta > * + *::before { content: "·"; margin: 0 9px; color: var(--light); opacity: .55; }
 .post-meta a { color: inherit; text-decoration: none; }
 .post-meta a:hover { color: var(--strong); text-decoration: underline; }
-.post-meta-label { margin-right: 4px; color: var(--light); }
 .post-meta.compact { margin-top: 8px; }
 .fallback-note { margin: 1.4em 0 0; padding: 10px 12px; border-radius: 5px; color: var(--light); background: var(--bg-soft); font-size: 14px; }
 .post-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
