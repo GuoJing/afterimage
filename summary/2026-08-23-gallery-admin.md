@@ -3,7 +3,7 @@
 ## 已实现
 
 - 新增 `galleries` 与 `gallery_photos` 两张 SQLite 表，应用启动时自动创建。
-- Gallery 元数据包括名称、描述、作者、发布时间、单张封面照片和存放详情页皮肤参数的 `settings_json`。
+- Gallery 元数据包括唯一 URL 后缀、名称、描述、作者、发布时间、单张封面照片和存放详情页皮肤参数的 `settings_json`。
 - Gallery 发布时间和照片拍摄时间保留后台输入的本地日期时间，不会因服务器时区转换而在重新编辑时偏移。
 - 作者默认为 `GuoJing`；旧数据中的 `{}` 会自动按默认瀑布流皮肤读取。
 - 后台不再直接编辑 JSON，而是选择瀑布流、平铺网格、渐隐画廊或智能拼接，并编辑当前皮肤专属参数。
@@ -13,7 +13,7 @@
 - 后台照片使用 `200px` 高缩略图网格，支持多选上传、照片描述、拍摄时间、拖拽排序、单选封面、取消封面及移除照片。
 - 上传和移除照片立即写入数据库；Gallery 元数据、照片描述、拍摄时间、排序和封面点击“保存 Gallery”后统一保存。
 - 删除封面照片时会自动清空 Gallery 的封面关联；删除 Gallery 会级联删除照片数据库记录。
-- 当前没有新增任何公开 Gallery 路由，前台将在后续功能中单独实现。
+- 公开详情路由为 `GET /gallery/:slug`，按照后台选择的皮肤渲染照片。
 
 ## 后台路由
 
@@ -35,6 +35,7 @@
 ```sql
 CREATE TABLE IF NOT EXISTS galleries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   author TEXT NOT NULL DEFAULT 'GuoJing',
@@ -58,6 +59,9 @@ CREATE TABLE IF NOT EXISTS gallery_photos (
 
 CREATE INDEX IF NOT EXISTS gallery_photos_gallery_position
 ON gallery_photos(gallery_id, position, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS galleries_slug_unique
+ON galleries(slug);
 ```
 
 升级前仍建议备份 `data/blog.db`；本地图片模式同时备份 `data/uploads`。

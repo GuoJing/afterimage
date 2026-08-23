@@ -115,6 +115,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS galleries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     author TEXT NOT NULL DEFAULT 'GuoJing',
@@ -142,6 +143,7 @@ db.exec(`
 const postColumns = new Set(db.prepare('PRAGMA table_info(posts)').all().map(column => column.name));
 if (!postColumns.has('author')) db.exec("ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT 'GuoJing'");
 if (!postColumns.has('category')) db.exec("ALTER TABLE posts ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+ensureGallerySlugSchema();
 
 const markdownRenderer = new Renderer();
 markdownRenderer.paragraph = function renderParagraph(token) {
@@ -405,6 +407,43 @@ app.get('/page/:locale/:slug', (req, res) => {
     robots: page.status === 'published'
       ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
       : 'noindex, nofollow, noarchive',
+  });
+});
+
+app.get('/gallery/:slug', (req, res) => {
+  const gallery = getGalleryBySlug(req.params.slug);
+  if (!gallery) return res.status(404).render('not-found');
+  const canonicalUrl = absoluteUrl(galleryUrl(gallery.slug));
+  const description = gallery.description || `${gallery.name} — ${gallery.photos.length} photos by ${gallery.author}`;
+  const coverPhoto = gallery.photos.find(photo => photo.id === Number(gallery.cover_photo_id)) || gallery.photos[0];
+  const image = coverPhoto?.image_url ? absoluteUrl(coverPhoto.image_url) : absoluteUrl('/apple-touch-icon.png');
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'ImageGallery',
+    name: gallery.name,
+    description,
+    url: canonicalUrl,
+    image,
+    datePublished: gallery.published_at,
+    dateModified: sqliteDateToIso(gallery.updated_at),
+    author: { '@type': 'Person', name: gallery.author },
+    publisher: publisherStructuredData(),
+    associatedMedia: gallery.photos.map(photo => ({
+      '@type': 'ImageObject',
+      contentUrl: absoluteUrl(photo.image_url),
+      ...(photo.description ? { caption: photo.description } : {}),
+      ...(photo.taken_at ? { dateCreated: photo.taken_at } : {}),
+    })),
+  };
+  res.render('gallery', {
+    gallery,
+    description,
+    canonicalUrl,
+    structuredData,
+    ogType: 'website',
+    ogImage: image,
+    publishedAt: gallery.published_at,
+    modifiedAt: sqliteDateToIso(gallery.updated_at),
   });
 });
 
@@ -970,6 +1009,10 @@ function pageUrl(locale, slug) {
   return `/page/${encodeURIComponent(locale)}/${encodeURIComponent(slug)}`;
 }
 
+function galleryUrl(slug) {
+  return `/gallery/${encodeURIComponent(slug)}`;
+}
+
 function getPublishedTranslations() {
   return db.prepare(`
     SELECT p.slug, p.published_at, p.updated_at, t.locale, t.title, t.summary, t.body
@@ -1034,6 +1077,14 @@ function buildSitemap() {
         ].join('\n'));
       }
     }
+  }
+  for (const gallery of getPublishedGalleries()) {
+    urls.push([
+      '  <url>',
+      `    <loc>${escapeXml(absoluteUrl(galleryUrl(gallery.slug)))}</loc>`,
+      `    <lastmod>${escapeXml(sqliteDateToIso(gallery.updated_at) || gallery.published_at)}</lastmod>`,
+      '  </url>',
+    ].join('\n'));
   }
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1198,6 +1249,7 @@ function escapeMarkdownLabel(value) {
 
 function localizePath(currentPath, locale) {
   if (currentPath === '/archive') return archivePath(locale);
+  if (/^\/gallery\/[^/]+$/.test(currentPath)) return currentPath;
   const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
   if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
   const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
@@ -1466,6 +1518,27 @@ function getGalleriesForAdmin() {
   `).all().map(withGalleryDefaults);
 }
 
+function getPublishedGalleries() {
+  return db.prepare(`
+    SELECT id, slug, name, description, author, published_at, updated_at
+    FROM galleries
+    ORDER BY published_at DESC, id DESC
+  `).all();
+}
+
+function getGalleryBySlug(slug) {
+  const gallery = db.prepare('SELECT * FROM galleries WHERE slug = ?').get(String(slug || ''));
+  if (!gallery) return null;
+  withGalleryDefaults(gallery);
+  gallery.photos = db.prepare(`
+    SELECT id, image_url, description, taken_at, position
+    FROM gallery_photos
+    WHERE gallery_id = ?
+    ORDER BY position ASC, id ASC
+  `).all(gallery.id);
+  return gallery;
+}
+
 function getGalleryForAdmin(id) {
   const gallery = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);
   if (!gallery) return null;
@@ -1480,6 +1553,7 @@ function getGalleryForAdmin(id) {
 }
 
 function withGalleryDefaults(gallery) {
+  gallery.slug = String(gallery.slug || '').trim();
   gallery.name = String(gallery.name || '').trim();
   gallery.description = String(gallery.description || '').trim();
   gallery.author = String(gallery.author || '').trim() || 'GuoJing';
@@ -1490,6 +1564,7 @@ function withGalleryDefaults(gallery) {
 
 function emptyGallery() {
   return {
+    slug: '',
     name: '',
     description: '',
     author: 'GuoJing',
@@ -1510,6 +1585,7 @@ function galleryFromBody(body, persisted = null) {
   const themeSettings = gallerySettingsFromBody(body, false);
   const gallery = {
     ...(persisted || emptyGallery()),
+    slug: String(body.slug || ''),
     name: String(body.name || ''),
     description: String(body.description || ''),
     author: String(body.author || '').trim() || 'GuoJing',
@@ -1531,11 +1607,13 @@ function galleryFromBody(body, persisted = null) {
 }
 
 const persistGallery = db.transaction((id, data) => {
+  const slug = String(data.slug || '').trim().replace(/^\/+|\/+$/g, '');
   const name = String(data.name || '').trim();
   const description = String(data.description || '').trim();
   const author = String(data.author || '').trim() || 'GuoJing';
   const publishedAt = normalizeOptionalDate(data.published_at, false);
   const settingsJson = normalizeGallerySettingsJson(data);
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(slug)) throw new Error('INVALID_GALLERY_SLUG');
   if (!name || name.length > 160) throw new Error('INVALID_GALLERY_NAME');
   if (description.length > 5000) throw new Error('INVALID_GALLERY_DESCRIPTION');
   if (author.length > 100) throw new Error('INVALID_AUTHOR');
@@ -1544,15 +1622,15 @@ const persistGallery = db.transaction((id, data) => {
   if (galleryId) {
     const result = db.prepare(`
       UPDATE galleries
-      SET name = ?, description = ?, author = ?, published_at = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP
+      SET slug = ?, name = ?, description = ?, author = ?, published_at = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(name, description, author, publishedAt, settingsJson, galleryId);
+    `).run(slug, name, description, author, publishedAt, settingsJson, galleryId);
     if (!result.changes) throw new Error('GALLERY_NOT_FOUND');
   } else {
     galleryId = Number(db.prepare(`
-      INSERT INTO galleries (name, description, author, published_at, settings_json)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(name, description, author, publishedAt, settingsJson).lastInsertRowid);
+      INSERT INTO galleries (slug, name, description, author, published_at, settings_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(slug, name, description, author, publishedAt, settingsJson).lastInsertRowid);
   }
 
   const photoIds = arrayValue(data.photo_id).map(Number).filter(Number.isInteger);
@@ -1672,6 +1750,28 @@ function galleryChoice(value, fallback, choices, strict) {
   if (choices.includes(value)) return value;
   if (strict) throw new Error('INVALID_GALLERY_THEME_OPTIONS');
   return fallback;
+}
+
+function ensureGallerySlugSchema() {
+  const columns = new Set(db.prepare('PRAGMA table_info(galleries)').all().map(column => column.name));
+  if (!columns.has('slug')) db.exec('ALTER TABLE galleries ADD COLUMN slug TEXT');
+  const rows = db.prepare('SELECT id, slug FROM galleries ORDER BY id').all();
+  const used = new Set();
+  const updateSlug = db.prepare('UPDATE galleries SET slug = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const row of rows) {
+      let slug = String(row.slug || '').trim();
+      if (!/^[a-z0-9][a-z0-9_-]*$/i.test(slug) || used.has(slug)) {
+        const base = `gallery-${row.id}`;
+        slug = base;
+        let suffix = 2;
+        while (used.has(slug)) slug = `${base}-${suffix++}`;
+        updateSlug.run(slug, row.id);
+      }
+      used.add(slug);
+    }
+  })();
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS galleries_slug_unique ON galleries(slug)');
 }
 
 function normalizeOptionalDate(value, allowEmpty) {
@@ -1801,6 +1901,7 @@ function friendlyError(error) {
   if (error.message === 'INVALID_AUTHOR') return '作者名称不能超过 100 个字符';
   if (error.message === 'INVALID_CATEGORY') return '分类名称不能超过 100 个字符';
   if (error.message === 'INVALID_GALLERY_NAME') return 'Gallery 名称不能为空，且不能超过 160 个字符';
+  if (error.message === 'INVALID_GALLERY_SLUG') return 'Gallery URL 只能包含英文字母、数字、连字符和下划线';
   if (error.message === 'INVALID_GALLERY_DESCRIPTION') return 'Gallery 描述不能超过 5000 个字符';
   if (error.message === 'INVALID_GALLERY_THEME') return '请选择有效的 Gallery 皮肤';
   if (error.message === 'INVALID_GALLERY_THEME_OPTIONS') return '皮肤参数超出允许范围，请检查后重试';

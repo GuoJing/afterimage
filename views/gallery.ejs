@@ -1,0 +1,73 @@
+<%- include('partials/head', { pageTitle: gallery.name, description }) %>
+<%
+  const theme = gallery.theme_settings?.theme || 'masonry';
+  const options = gallery.theme_settings?.options || {};
+  const photoAlt = (photo, index) => photo.description || `${gallery.name} ${index + 1}`;
+%>
+<main class="gallery-main">
+  <article class="gallery-detail" data-gallery-detail data-gallery-theme="<%= theme %>">
+    <header class="gallery-detail-header">
+      <p class="eyebrow">GALLERY</p>
+      <h1><%= gallery.name %></h1>
+      <div class="gallery-detail-meta">
+        <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
+        <span><%= gallery.author %></span>
+        <span><%= gallery.photos.length %> photos</span>
+      </div>
+      <% if (gallery.description) { %><p class="gallery-detail-description"><%= gallery.description %></p><% } %>
+    </header>
+
+    <% if (!gallery.photos.length) { %>
+      <div class="gallery-public-empty"><span>◇</span><p>这个 Gallery 暂时还没有照片。</p></div>
+    <% } else if (theme === 'grid') { %>
+      <section class="gallery-render gallery-render-grid gallery-fit-<%= options.imageFit %> gallery-aspect-<%= String(options.aspectRatio).replace(':', '-') %>" aria-label="<%= gallery.name %> 照片" style="--gallery-columns-desktop:<%= options.columnsDesktop %>;--gallery-columns-tablet:<%= options.columnsTablet %>;--gallery-gap:<%= options.gap %>px">
+        <% gallery.photos.forEach((photo, index) => { %>
+          <figure class="gallery-public-photo">
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <% if (photo.description || photo.taken_at) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
+          </figure>
+        <% }) %>
+      </section>
+    <% } else if (theme === 'fade') { %>
+      <section class="gallery-render gallery-render-fade gallery-fit-<%= options.imageFit %>" aria-label="<%= gallery.name %> 幻灯片" data-fade-gallery data-autoplay="<%= options.autoplay %>" data-interval="<%= options.intervalMs %>" style="--gallery-fade-duration:<%= options.transitionMs %>ms">
+        <div class="gallery-fade-stage" tabindex="0">
+          <% gallery.photos.forEach((photo, index) => { %>
+            <figure class="gallery-fade-slide <%= index === 0 ? 'is-active' : '' %>" data-fade-slide aria-hidden="<%= index === 0 ? 'false' : 'true' %>">
+              <img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 2 ? 'eager' : 'lazy' %>" data-gallery-lightbox>
+              <% if (photo.description || photo.taken_at) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
+            </figure>
+          <% }) %>
+          <button class="gallery-fade-arrow gallery-fade-previous" type="button" aria-label="上一张照片" data-fade-previous></button>
+          <button class="gallery-fade-arrow gallery-fade-next" type="button" aria-label="下一张照片" data-fade-next></button>
+          <span class="gallery-fade-count" aria-live="polite" data-fade-count>1 / <%= gallery.photos.length %></span>
+        </div>
+        <% if (options.showThumbnails && gallery.photos.length > 1) { %>
+          <div class="gallery-fade-thumbnails" aria-label="选择照片">
+            <% gallery.photos.forEach((photo, index) => { %><button class="<%= index === 0 ? 'is-active' : '' %>" type="button" data-fade-thumbnail="<%= index %>" aria-label="查看第 <%= index + 1 %> 张照片" aria-current="<%= index === 0 ? 'true' : 'false' %>"><img src="<%= photo.image_url %>" alt="" loading="lazy"></button><% }) %>
+          </div>
+        <% } %>
+      </section>
+    <% } else if (theme === 'justified') { %>
+      <section class="gallery-render gallery-render-justified gallery-last-row-<%= options.lastRow %>" aria-label="<%= gallery.name %> 照片" data-justified-gallery style="--gallery-target-row-height:<%= options.targetRowHeight %>px;--gallery-max-row-height:<%= options.maxRowHeight %>px;--gallery-gap:<%= options.gap %>px">
+        <% gallery.photos.forEach((photo, index) => { %>
+          <figure class="gallery-public-photo gallery-justified-item" style="--photo-ratio:1.5">
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <% if (options.showCaptions && (photo.description || photo.taken_at)) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
+          </figure>
+        <% }) %>
+      </section>
+    <% } else { %>
+      <section class="gallery-render gallery-render-masonry" aria-label="<%= gallery.name %> 照片" style="--gallery-columns-desktop:<%= options.columnsDesktop %>;--gallery-columns-tablet:<%= options.columnsTablet %>;--gallery-gap:<%= options.gap %>px">
+        <% gallery.photos.forEach((photo, index) => { %>
+          <figure class="gallery-public-photo">
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <% if (options.showCaptions && (photo.description || photo.taken_at)) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
+          </figure>
+        <% }) %>
+      </section>
+    <% } %>
+
+    <footer class="gallery-detail-footer"><span><%= gallery.name %></span><span>Copyright by <%= gallery.author %></span></footer>
+  </article>
+</main>
+<%- include('partials/footer') %>

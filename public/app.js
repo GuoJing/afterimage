@@ -49,6 +49,9 @@ document.querySelectorAll('[data-confirm]').forEach(button => {
 
 initializeImageLightbox();
 
+const galleryDetail = document.querySelector('[data-gallery-detail]');
+if (galleryDetail) initializeGalleryDetail(galleryDetail);
+
 const editorForm = document.querySelector('[data-editor-form]');
 if (editorForm) initializeEditor(editorForm);
 
@@ -432,7 +435,7 @@ function markdownAlt(filename) {
 }
 
 function initializeImageLightbox() {
-  const images = [...document.querySelectorAll('.post-detail .prose img')];
+  const images = [...document.querySelectorAll('.post-detail .prose img, [data-gallery-lightbox]')];
   if (!images.length) return;
 
   const lightbox = document.createElement('div');
@@ -528,6 +531,133 @@ function initializeImageLightbox() {
       show(currentIndex + 1);
     }
   });
+}
+
+function initializeGalleryDetail(root) {
+  const fadeGallery = root.querySelector('[data-fade-gallery]');
+  if (fadeGallery) initializeFadeGallery(fadeGallery);
+  const justifiedGallery = root.querySelector('[data-justified-gallery]');
+  if (justifiedGallery) initializeJustifiedGallery(justifiedGallery);
+}
+
+function initializeFadeGallery(gallery) {
+  const slides = [...gallery.querySelectorAll('[data-fade-slide]')];
+  const thumbnails = [...gallery.querySelectorAll('[data-fade-thumbnail]')];
+  const previous = gallery.querySelector('[data-fade-previous]');
+  const next = gallery.querySelector('[data-fade-next]');
+  const counter = gallery.querySelector('[data-fade-count]');
+  if (!slides.length) return;
+
+  let index = 0;
+  let timer = null;
+  let paused = false;
+  const interval = Number(gallery.dataset.interval) || 5000;
+  const autoplay = gallery.dataset.autoplay === 'true' && slides.length > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const show = nextIndex => {
+    index = (nextIndex + slides.length) % slides.length;
+    slides.forEach((slide, slideIndex) => {
+      const active = slideIndex === index;
+      slide.classList.toggle('is-active', active);
+      slide.setAttribute('aria-hidden', String(!active));
+      const image = slide.querySelector('[data-gallery-lightbox]');
+      if (image) image.tabIndex = active ? 0 : -1;
+    });
+    thumbnails.forEach((thumbnail, thumbnailIndex) => {
+      const active = thumbnailIndex === index;
+      thumbnail.classList.toggle('is-active', active);
+      thumbnail.setAttribute('aria-current', String(active));
+    });
+    if (counter) counter.textContent = `${index + 1} / ${slides.length}`;
+    schedule();
+  };
+  const schedule = () => {
+    window.clearTimeout(timer);
+    if (autoplay && !paused && !document.hidden) timer = window.setTimeout(() => show(index + 1), interval);
+  };
+
+  previous?.addEventListener('click', () => show(index - 1));
+  next?.addEventListener('click', () => show(index + 1));
+  thumbnails.forEach(thumbnail => thumbnail.addEventListener('click', () => show(Number(thumbnail.dataset.fadeThumbnail))));
+  gallery.querySelector('.gallery-fade-stage')?.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft') { event.preventDefault(); show(index - 1); }
+    if (event.key === 'ArrowRight') { event.preventDefault(); show(index + 1); }
+  });
+  gallery.addEventListener('mouseenter', () => { paused = true; schedule(); });
+  gallery.addEventListener('mouseleave', () => { paused = false; schedule(); });
+  gallery.addEventListener('focusin', () => { paused = true; schedule(); });
+  gallery.addEventListener('focusout', event => {
+    if (gallery.contains(event.relatedTarget)) return;
+    paused = false;
+    schedule();
+  });
+  document.addEventListener('visibilitychange', schedule);
+  if (slides.length === 1) {
+    previous?.setAttribute('hidden', '');
+    next?.setAttribute('hidden', '');
+    counter?.setAttribute('hidden', '');
+  }
+  show(0);
+}
+
+function initializeJustifiedGallery(gallery) {
+  const items = [...gallery.querySelectorAll('.gallery-justified-item')];
+  if (!items.length) return;
+
+  const updateRatio = item => {
+    const image = item.querySelector('img');
+    if (!image?.naturalWidth || !image.naturalHeight) return;
+    item.dataset.photoRatio = String(image.naturalWidth / image.naturalHeight);
+    layout();
+  };
+  const layout = () => {
+    if (window.innerWidth <= 700) {
+      items.forEach(item => { item.style.removeProperty('width'); item.style.removeProperty('flex'); item.style.removeProperty('--photo-height'); });
+      return;
+    }
+    const styles = getComputedStyle(gallery);
+    const width = gallery.clientWidth;
+    const gap = Number.parseFloat(styles.getPropertyValue('--gallery-gap')) || 0;
+    const target = Number.parseFloat(styles.getPropertyValue('--gallery-target-row-height')) || 320;
+    const maxHeight = Number.parseFloat(styles.getPropertyValue('--gallery-max-row-height')) || 480;
+    const rows = [];
+    let row = [];
+    let ratioSum = 0;
+    items.forEach(item => {
+      const ratio = Number(item.dataset.photoRatio) || 1.5;
+      row.push({ item, ratio });
+      ratioSum += ratio;
+      if (ratioSum * target + gap * (row.length - 1) >= width) {
+        rows.push(row);
+        row = [];
+        ratioSum = 0;
+      }
+    });
+    if (row.length) rows.push(row);
+
+    rows.forEach((entries, rowIndex) => {
+      const sum = entries.reduce((total, entry) => total + entry.ratio, 0);
+      const available = Math.max(1, width - gap * (entries.length - 1));
+      const lastRow = rowIndex === rows.length - 1;
+      const shouldFill = !lastRow || gallery.classList.contains('gallery-last-row-justify');
+      const height = Math.min(maxHeight, shouldFill ? available / sum : Math.min(target, available / sum));
+      entries.forEach(({ item, ratio }) => {
+        const itemWidth = Math.max(1, ratio * height);
+        item.style.width = `${itemWidth}px`;
+        item.style.flex = `0 0 ${itemWidth}px`;
+        item.style.setProperty('--photo-height', `${height}px`);
+      });
+    });
+  };
+
+  items.forEach(item => {
+    const image = item.querySelector('img');
+    if (image?.complete) updateRatio(item);
+    else image?.addEventListener('load', () => updateRatio(item), { once: true });
+  });
+  if ('ResizeObserver' in window) new ResizeObserver(layout).observe(gallery);
+  else window.addEventListener('resize', layout);
+  layout();
 }
 
 function normalizeLocale(value) {

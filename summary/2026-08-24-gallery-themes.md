@@ -18,4 +18,4 @@
 
 ## 数据说明
 
-本次没有新增或修改 SQLite 字段，无需执行升级 SQL。下一阶段实现 Gallery 前台时，可以直接读取 `settings_json` 决定渲染器和对应参数。
+皮肤设置本身没有增加 SQLite 字段。后续公开详情页已经直接读取 `settings_json` 决定渲染器和对应参数；URL 功能另行增加了 `galleries.slug`。

@@ -4,7 +4,7 @@
   <main class="admin-content gallery-editor-page">
     <header class="admin-page-head">
       <div><p class="eyebrow">CONTENT / GALLERY</p><h1><%= isNew ? '新建 Gallery' : '编辑 Gallery' %></h1><p><%= isNew ? '先保存基本信息，然后上传照片。' : '整理照片、设置封面并拖拽调整顺序。' %></p></div>
-      <a class="button" href="<%= adminBasePath %>/galleries">返回列表</a>
+      <div class="button-row"><% if (!isNew) { %><a class="button" target="_blank" href="/gallery/<%= gallery.slug %>">查看 Gallery ↗</a><% } %><a class="button" href="<%= adminBasePath %>/galleries">返回列表</a></div>
     </header>
     <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">Gallery 已保存</p><% } %>
     <% if (error) { %><p class="form-error"><%= error %></p><% } %>
@@ -14,6 +14,7 @@
       <section class="admin-card gallery-details-card">
         <div class="gallery-settings-grid">
           <label>名称<input name="name" value="<%= gallery.name || '' %>" maxlength="160" required placeholder="例如 Tokyo, 2026"></label>
+          <label>Gallery URL<div class="slug-input"><span>/gallery/</span><input name="slug" value="<%= gallery.slug || '' %>" placeholder="tokyo-2026" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required></div></label>
           <label>作者<input name="author" value="<%= gallery.author || 'GuoJing' %>" maxlength="100" placeholder="GuoJing"></label>
           <label>发布时间<input name="published_at" type="datetime-local" value="<%= datetimeLocalValue(gallery.published_at) %>" required></label>
           <label class="gallery-description-field">描述<textarea name="description" rows="4" maxlength="5000" placeholder="简要介绍这个 Gallery"><%= gallery.description || '' %></textarea></label>
