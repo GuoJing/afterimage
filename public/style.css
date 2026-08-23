@@ -106,7 +106,7 @@ button, input, textarea, select { font: inherit; }
 .prose .image-stack + .image-stack { margin-top: -1.5em; }
 .prose .image-row { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 6px; }
 .prose .image-row img { flex: 1 1 0; min-width: 0; width: auto; max-width: 100%; height: auto; margin: 0; object-fit: contain; }
-.prose .image-row img:only-child { flex: 0 1 auto; }
+.prose .image-row img:only-child { flex: 1 1 0; width: 100%; }
 .prose blockquote { position: relative; margin: 0 0 1.64em; padding: 34px 1em .1em 20px; border-left: 4px solid var(--accent); color: var(--text); font-family: var(--font-base); font-size: 1.12em; }
 .prose blockquote::before { content: "“"; position: absolute; top: 0; left: 20px; color: var(--accent); font: 700 48px/1 var(--sys-serif); }
 .prose hr { display: block; width: 90%; max-width: 100px; margin: 2.4em auto; border: 0; border-top: 5px solid var(--line); }
@@ -125,7 +125,6 @@ button, input, textarea, select { font: inherit; }
 .post-detail .prose li + li { margin-top: .2em; }
 .post-detail .prose figure { margin: 0; }
 .post-detail .prose figcaption { margin-top: 4px; color: var(--light); font-size: 13px; text-align: center; }
-.post-detail .prose .image-row img:only-child { flex: 1 1 0; width: 100%; }
 .article-signature { display: flex; align-items: center; flex-direction: column; margin-top: 42px; text-align: center; }
 .article-signature img { display: block; width: 42px; height: 42px; object-fit: cover; }
 .article-signature p { margin: 11px 0 0; color: var(--mute); font: 500 11px/1.4 var(--sans); letter-spacing: .04em; }
