@@ -410,9 +410,9 @@ app.get('/page/:locale/:slug', (req, res) => {
   });
 });
 
-app.get('/gallery', (req, res) => {
+app.get('/galleries', (req, res) => {
   const galleries = getGalleriesForPublic();
-  const canonicalUrl = absoluteUrl('/gallery');
+  const canonicalUrl = absoluteUrl('/galleries');
   const description = `Browse ${blog.title} photo galleries.`;
   const previewPhoto = galleries.find(gallery => gallery.preview_photos.length)?.preview_photos[0];
   const image = previewPhoto?.image_url ? absoluteUrl(previewPhoto.image_url) : absoluteUrl('/apple-touch-icon.png');
@@ -443,6 +443,10 @@ app.get('/gallery', (req, res) => {
     ogType: 'website',
     ogImage: image,
   });
+});
+
+app.get('/gallery', (req, res) => {
+  res.redirect(301, '/galleries');
 });
 
 app.get('/gallery/:slug', (req, res) => {
@@ -1071,7 +1075,7 @@ function getPublishedPageTranslations() {
 function buildSitemap() {
   const urls = [
     `  <url><loc>${escapeXml(absoluteUrl('/'))}</loc></url>`,
-    `  <url><loc>${escapeXml(absoluteUrl('/gallery'))}</loc></url>`,
+    `  <url><loc>${escapeXml(absoluteUrl('/galleries'))}</loc></url>`,
   ];
 
   const archiveAlternates = configuredLocales.map(locale =>
@@ -1285,7 +1289,8 @@ function escapeMarkdownLabel(value) {
 
 function localizePath(currentPath, locale) {
   if (currentPath === '/archive') return archivePath(locale);
-  if (/^\/gallery(?:\/[^/]+)?\/?$/.test(currentPath)) return currentPath.replace(/\/$/, '') || '/gallery';
+  if (/^\/galleries\/?$/.test(currentPath)) return '/galleries';
+  if (/^\/gallery\/[^/]+\/?$/.test(currentPath)) return currentPath.replace(/\/$/, '');
   const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
   if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
   const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
@@ -1957,7 +1962,8 @@ function isNavigationActive(url, currentPath) {
   const requestPath = internalNavigationPath(currentPath);
   if (!navigationPath || !requestPath) return false;
   if (navigationPath === requestPath) return true;
-  if (navigationPath === '/gallery' && requestPath.startsWith('/gallery/')) return true;
+  if (navigationPath === '/galleries' && requestPath.startsWith('/gallery/')) return true;
+  if (navigationPath === '/gallery' && (requestPath === '/galleries' || requestPath.startsWith('/gallery/'))) return true;
 
   const navigationContent = navigationPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);
   const requestContent = requestPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);
