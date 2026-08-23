@@ -10,7 +10,7 @@
       <h1><%= gallery.name %></h1>
       <div class="gallery-detail-meta">
         <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
-        <span><%= gallery.author %></span>
+        <a href="/page/<%= locale %>/about" rel="author"><%= gallery.author %></a>
         <span><%= gallery.photos.length %> photos</span>
       </div>
       <% if (gallery.description) { %><p class="gallery-detail-description"><%= gallery.description %></p><% } %>
@@ -22,7 +22,7 @@
       <section class="gallery-render gallery-render-grid gallery-fit-<%= options.imageFit %> gallery-aspect-<%= String(options.aspectRatio).replace(':', '-') %>" aria-label="<%= gallery.name %> 照片" style="--gallery-columns-desktop:<%= options.columnsDesktop %>;--gallery-columns-tablet:<%= options.columnsTablet %>;--gallery-gap:<%= options.gap %>px">
         <% gallery.photos.forEach((photo, index) => { %>
           <figure class="gallery-public-photo">
-            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>" decoding="async"<%- index === 0 ? ' fetchpriority="high"' : '' %> data-gallery-lightbox></div>
             <% if (photo.description || photo.taken_at) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
           </figure>
         <% }) %>
@@ -32,7 +32,7 @@
         <div class="gallery-fade-stage" tabindex="0">
           <% gallery.photos.forEach((photo, index) => { %>
             <figure class="gallery-fade-slide <%= index === 0 ? 'is-active' : '' %>" data-fade-slide aria-hidden="<%= index === 0 ? 'false' : 'true' %>">
-              <img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 2 ? 'eager' : 'lazy' %>" data-gallery-lightbox>
+              <img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>" decoding="async"<%- index === 0 ? ' fetchpriority="high"' : '' %> data-gallery-lightbox>
               <% if (photo.description || photo.taken_at) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
             </figure>
           <% }) %>
@@ -50,7 +50,7 @@
       <section class="gallery-render gallery-render-justified gallery-last-row-<%= options.lastRow %>" aria-label="<%= gallery.name %> 照片" data-justified-gallery style="--gallery-target-row-height:<%= options.targetRowHeight %>px;--gallery-max-row-height:<%= options.maxRowHeight %>px;--gallery-gap:<%= options.gap %>px">
         <% gallery.photos.forEach((photo, index) => { %>
           <figure class="gallery-public-photo gallery-justified-item" style="--photo-ratio:1.5">
-            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>" decoding="async"<%- index === 0 ? ' fetchpriority="high"' : '' %> data-gallery-lightbox></div>
             <% if (options.showCaptions && (photo.description || photo.taken_at)) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
           </figure>
         <% }) %>
@@ -59,7 +59,7 @@
       <section class="gallery-render gallery-render-masonry" aria-label="<%= gallery.name %> 照片" style="--gallery-columns-desktop:<%= options.columnsDesktop %>;--gallery-columns-tablet:<%= options.columnsTablet %>;--gallery-gap:<%= options.gap %>px">
         <% gallery.photos.forEach((photo, index) => { %>
           <figure class="gallery-public-photo">
-            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index < 4 ? 'eager' : 'lazy' %>" data-gallery-lightbox></div>
+            <div class="gallery-public-image"><img src="<%= photo.image_url %>" alt="<%= photoAlt(photo, index) %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>" decoding="async"<%- index === 0 ? ' fetchpriority="high"' : '' %> data-gallery-lightbox></div>
             <% if (options.showCaptions && (photo.description || photo.taken_at)) { %><figcaption><% if (photo.description) { %><span><%= photo.description %></span><% } %><% if (photo.taken_at) { %><time datetime="<%= photo.taken_at %>"><%= formatDate(photo.taken_at) %></time><% } %></figcaption><% } %>
           </figure>
         <% }) %>

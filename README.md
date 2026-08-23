@@ -20,6 +20,7 @@
 - 管理员可预览草稿，普通访客访问草稿仍返回 404
 - Markdown 正文，支持外链图片和管理员本地图片上传
 - 文章 canonical、hreflang、Open Graph、Twitter Card 与 BlogPosting JSON-LD
+- 可索引的多语言 Topic 页面、同主题文章关联和 About 作者实体 Schema
 - 动态 `robots.txt`、`sitemap.xml`、`llms.txt`、`llms-full.txt` 和文章 Markdown 版本
 - 响应式页面、明暗主题
 - Docker / Docker Compose 云端部署
@@ -156,7 +157,7 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 
 当前支持 JPEG、PNG、WebP、GIF 和 AVIF；服务端根据文件实际内容判断类型，不接受 SVG 或只修改扩展名的伪图片。
 
-图片 URL 使用随机文件名并按年月分目录，可以安全设置长期浏览器/CDN 缓存。本地模式保存相对 URL；Spaces 模式保存 `SPACES_PUBLIC_URL` 下的完整 CDN URL。
+新上传图片的 URL 使用“原文件名语义化片段 + 短随机标识”并按年月分目录，例如 `beijing-hutong-midnight-a1b2c3d4e5f6.jpg`；既保留图片搜索可理解的文件名，也避免重名并支持长期浏览器/CDN 缓存。已有图片 URL 不会被修改。本地模式保存相对 URL；Spaces 模式保存 `SPACES_PUBLIC_URL` 下的完整 CDN URL。
 
 图片排版由 Markdown 中是否换行决定。同一行的图片会尽量并排显示：
 
@@ -178,12 +179,20 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。
-- `/sitemap.xml` 列出多语言归档，以及已发布文章、页面的实际语言版本。
+- 首页根据语言生成独立 Title、Description 和可见的站点介绍；可以使用 `HOME_SEO_TITLE_<语言>`、`HOME_SEO_DESCRIPTION_<语言>`、`HOME_INTRO_<语言>` 覆盖默认文案。
+- 首页使用 `WebSite + Organization + Person` 实体图；slug 为 `about` 的独立页面额外输出摄影师 `Person` Schema。`BLOG_AUTHOR` 配置作者名，`BLOG_SOCIAL_URLS` 可用英文逗号配置 Instagram、YouTube 等公开身份链接。
+- 文章分类自动成为 `/topics/<分类-slug>` 聚合页；`/topics` 提供主题目录。Topic 页面按语言聚合文章，文章页会自动显示同分类的关联文章。
+- `/sitemap.xml` 列出多语言首页、归档、Topic 目录与详情，以及已发布文章、页面和 Gallery 的 canonical URL。
 - `/robots.txt` 允许搜索引擎抓取公开内容并声明 Sitemap。
-- `/llms.txt` 提供适合 AI/Agent 发现的文章与页面目录，`/llms-full.txt` 提供完整正文合集。
+- `/llms.txt` 提供适合 AI/Agent 发现的文章、页面、摄影合集和 Topic 目录，`/llms-full.txt` 提供完整正文合集。
 - 每篇文章同时提供纯 Markdown 地址：`/post/<语言>/<slug>.md`。
 - 每个页面同时提供纯 Markdown 地址：`/page/<语言>/<slug>.md`。
+- 每个 Gallery 同时提供包含照片 URL、说明和拍摄时间的 Markdown 地址：`/gallery/<slug>.md`。
+- 文章作者和分类均为可抓取的内部链接；文章 JSON-LD 包含作者 About URL，Open Graph 包含作者、分类和图片替代文字。
+- Markdown 正文确保图片存在 alt；没有填写时从图片文件名生成安全后备文本。首张正文或 Gallery 图片使用 eager + high priority，其余图片 lazy load 并异步解码。
 - 草稿、404 和后台页面通过 `noindex` 或 `X-Robots-Tag` 禁止索引。
+
+自动生成的 Topic 不需要数据库升级：继续在文章后台填写现有“分类”字符串即可。建议使用稳定、具体的分类名称，例如 `Street Photography`、`Photography History`，同一主题保持拼写一致。
 
 ## 云端部署
 

@@ -245,6 +245,7 @@ function initializeEditor(form) {
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
             'X-CSRF-Token': form.querySelector('[data-csrf]').value,
+            'X-File-Name': encodeURIComponent(file.name),
           },
           body: file,
         });
@@ -356,6 +357,7 @@ function initializeGalleryEditor(form) {
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
             'X-CSRF-Token': form.querySelector('[data-csrf]').value,
+            'X-File-Name': encodeURIComponent(file.name),
           },
           body: file,
         });

@@ -1,0 +1,22 @@
+<%- include('partials/head', { pageTitle, description }) %>
+<main class="taxonomy-main">
+  <section class="taxonomy-inner" aria-labelledby="topics-title">
+    <header class="taxonomy-header">
+      <h1 id="topics-title"><%= pageTitle %></h1>
+      <p><%= description %></p>
+    </header>
+    <% if (!topics.length) { %>
+      <p class="taxonomy-empty"><%= copy.noTopics %></p>
+    <% } else { %>
+      <div class="topic-grid">
+        <% topics.forEach(topic => { %>
+          <a href="<%= topicPath(topic.slug) %>">
+            <h2><%= topic.name %></h2>
+            <span><%= topic.count %> <%= copy.articlesLabel %></span>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</main>
+<%- include('partials/footer') %>

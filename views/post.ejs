@@ -11,12 +11,20 @@
     </div>
     <div class="post-meta">
       <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
-      <span><%= post.author %></span>
-      <% if (post.category) { %><span><%= post.category %></span><% } %>
+      <a href="<%= authorUrl %>" rel="author"><%= post.author %></a>
+      <% if (post.category) { %><a href="<%= topicUrl(post.category) %>"><%= post.category %></a><% } %>
     </div>
     <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
     <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
     <div class="prose"><%- renderMarkdown(post.body) %></div>
+    <% if (relatedPosts.length) { %>
+      <aside class="related-posts" aria-labelledby="related-posts-title">
+        <p class="eyebrow" id="related-posts-title"><%= seoCopy.relatedTitle %></p>
+        <ul>
+          <% relatedPosts.forEach(item => { %><li><a href="/post/<%= item.rendered_locale %>/<%= item.slug %>"><span><%= item.title %></span><time datetime="<%= item.published_at %>"><%= formatDate(item.published_at) %></time></a></li><% }) %>
+        </ul>
+      </aside>
+    <% } %>
     <footer class="article-signature">
       <img src="/apple-touch-icon.png" width="42" height="42" alt="<%= blog.title %>">
       <p>Copyright by <%= post.author %></p>

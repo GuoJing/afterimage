@@ -13,14 +13,14 @@
       </div>
     <% } else { %>
       <div class="gallery-index-grid">
-        <% galleries.forEach(gallery => { const previewCount = gallery.preview_photos.length; %>
+        <% galleries.forEach((gallery, galleryIndex) => { const previewCount = gallery.preview_photos.length; %>
           <a class="gallery-index-card" href="/gallery/<%= encodeURIComponent(gallery.slug) %>" aria-label="<%= gallery.name %>, <%= gallery.photo_count %> photos">
             <div class="gallery-index-card-body">
               <div>
                 <h2><%= gallery.name %></h2>
                 <p class="gallery-index-meta">
                   <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
-                  <span><%= gallery.author %></span>
+                  <a href="/page/<%= locale %>/about" rel="author"><%= gallery.author %></a>
                   <span><%= gallery.photo_count %> photos</span>
                 </p>
                 <% if (gallery.description) { %><p class="gallery-index-description"><%= gallery.description %></p><% } %>
@@ -30,7 +30,7 @@
             <div class="gallery-index-preview gallery-index-preview-<%= previewCount %>">
               <% if (previewCount) { %>
                 <% gallery.preview_photos.forEach((photo, index) => { %>
-                  <img src="<%= photo.image_url %>" alt="<%= photo.description || `${gallery.name} ${index + 1}` %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>">
+                  <img src="<%= photo.image_url %>" alt="<%= photo.description || `${gallery.name} ${index + 1}` %>" loading="<%= galleryIndex === 0 && index === 0 ? 'eager' : 'lazy' %>" decoding="async"<%- galleryIndex === 0 && index === 0 ? ' fetchpriority="high"' : '' %>>
                 <% }) %>
               <% } else { %>
                 <span>EMPTY GALLERY</span>

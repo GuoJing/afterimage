@@ -27,8 +27,10 @@ const languageOptions = buildLanguageOptions();
 const blog = {
   title: process.env.BLOG_TITLE || 'AFTERIMAGE PHOTOGRAPHY',
   description: process.env.BLOG_DESCRIPTION || '一个关于摄影、观看与生活的个人博客。',
-  author: process.env.BLOG_AUTHOR || process.env.BLOG_TITLE || 'AFTERIMAGE PHOTOGRAPHY',
+  author: process.env.BLOG_AUTHOR || 'GuoJing',
 };
+const socialUrls = normalizeSocialUrls(process.env.BLOG_SOCIAL_URLS);
+const seoCopyByLocale = buildSeoCopy();
 const archiveCopy = {
   zh: { title: '归档', description: '按时间浏览所有已发布文章。' },
   en: { title: 'Archive', description: 'Browse all published posts by date.' },
@@ -225,16 +227,34 @@ app.get('/', (req, res) => {
   const posts = getPublishedPosts(res.locals.locale);
   const canonicalUrl = absoluteUrl(homePath(res.locals.locale));
   const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(homePath(code)) }));
+  const homeSeo = seoCopy(res.locals.locale);
   const structuredData = {
     '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: blog.title,
-    description: blog.description,
-    inLanguage: res.locals.locale,
-    url: canonicalUrl,
-    publisher: publisherStructuredData(),
+    '@graph': [
+      {
+        '@type': 'WebSite',
+        '@id': `${absoluteUrl('/')}#website`,
+        name: blog.title,
+        description: homeSeo.description,
+        inLanguage: res.locals.locale,
+        url: canonicalUrl,
+        publisher: { '@id': `${absoluteUrl('/')}#organization` },
+      },
+      publisherStructuredData(),
+      personStructuredData(blog.author, res.locals.locale),
+    ],
   };
-  res.render('home', { posts, renderMarkdown, canonicalUrl, alternateUrls, xDefaultUrl: absoluteUrl('/'), structuredData });
+  res.render('home', {
+    posts,
+    renderMarkdown,
+    canonicalUrl,
+    alternateUrls,
+    xDefaultUrl: absoluteUrl('/'),
+    structuredData,
+    description: homeSeo.description,
+    documentTitle: homeSeo.title,
+    homeSeo,
+  });
 });
 
 app.get('/archive', (req, res) => {
@@ -281,6 +301,53 @@ app.get('/archive', (req, res) => {
   });
 });
 
+app.get('/topics', (req, res) => {
+  const locale = preferredParameterizedLocale(req, res, '/topics');
+  if (!locale) return;
+  const topics = getTopics(locale);
+  const copy = seoCopy(locale);
+  const canonicalUrl = absoluteUrl(topicsPath(locale));
+  const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(topicsPath(code)) }));
+  const description = copy.topicsDescription;
+  const structuredData = collectionStructuredData(copy.topicsTitle, description, canonicalUrl, locale,
+    topics.map(topic => ({ name: topic.name, url: absoluteUrl(topicPath(topic.slug, locale)) })));
+  res.render('topics', {
+    topics,
+    description,
+    canonicalUrl,
+    alternateUrls,
+    xDefaultUrl: absoluteUrl(topicsPath(defaultLocale)),
+    structuredData,
+    htmlLang: locale,
+    pageTitle: copy.topicsTitle,
+    copy,
+  });
+});
+
+app.get('/topics/:slug', (req, res) => {
+  const locale = preferredParameterizedLocale(req, res, `/topics/${encodeURIComponent(req.params.slug)}`);
+  if (!locale) return;
+  const topic = getTopic(req.params.slug, locale);
+  if (!topic) return res.status(404).render('not-found');
+  const availableLocales = configuredLocales.filter(code => getTopic(req.params.slug, code));
+  const canonicalUrl = absoluteUrl(topicPath(topic.slug, locale));
+  const alternateUrls = availableLocales.map(code => ({ locale: code, url: absoluteUrl(topicPath(topic.slug, code)) }));
+  const copy = seoCopy(locale);
+  const description = localizedTopicDescription(topic.name, topic.posts.length, locale);
+  const structuredData = collectionStructuredData(topic.name, description, canonicalUrl, locale,
+    topic.posts.map(post => ({ name: post.title, url: absoluteUrl(postUrl(locale, post.slug)) })));
+  res.render('topic', {
+    topic,
+    description,
+    canonicalUrl,
+    alternateUrls,
+    xDefaultUrl: absoluteUrl(topicPath(topic.slug, availableLocales.includes(defaultLocale) ? defaultLocale : locale)),
+    structuredData,
+    htmlLang: locale,
+    copy,
+  });
+});
+
 app.get('/feed.xml', (req, res) => {
   const locale = parameterLocale(req);
   const posts = getPublishedPostsByExactLocale(locale);
@@ -314,6 +381,7 @@ app.get('/post/:locale/:slug', (req, res) => {
   const markdownUrl = absoluteUrl(`${postUrl(post.rendered_locale, post.slug)}.md`);
   const description = articleDescription(post);
   const image = extractFirstImage(post.body) || absoluteUrl('/apple-touch-icon.png');
+  const authorUrl = absoluteUrl(pageUrl(post.rendered_locale, 'about'));
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
@@ -324,9 +392,10 @@ app.get('/post/:locale/:slug', (req, res) => {
     dateModified: sqliteDateToIso(post.updated_at),
     inLanguage: post.rendered_locale,
     mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
-    author: { '@type': 'Person', name: post.author },
+    author: { '@type': 'Person', name: post.author, url: authorUrl },
     publisher: publisherStructuredData(),
   };
+  const relatedPosts = getRelatedPosts(post, post.rendered_locale);
   if (post.status !== 'published') {
     res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   }
@@ -342,8 +411,14 @@ app.get('/post/:locale/:slug', (req, res) => {
     htmlLang: post.rendered_locale,
     ogType: 'article',
     ogImage: image,
+    ogImageAlt: post.title,
+    authorName: post.author,
+    articleAuthorUrl: authorUrl,
+    articleSection: post.category,
     publishedAt: post.published_at,
     modifiedAt: sqliteDateToIso(post.updated_at),
+    relatedPosts,
+    authorUrl: pageUrl(post.rendered_locale, 'about'),
     robots: post.status === 'published'
       ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
       : 'noindex, nofollow, noarchive',
@@ -377,17 +452,27 @@ app.get('/page/:locale/:slug', (req, res) => {
   const markdownUrl = absoluteUrl(`${pageUrl(page.rendered_locale, page.slug)}.md`);
   const description = articleDescription(page);
   const image = extractFirstImage(page.body) || absoluteUrl('/apple-touch-icon.png');
-  const structuredData = {
-    '@context': 'https://schema.org',
+  const webPageData = {
     '@type': 'WebPage',
+    '@id': `${canonicalUrl}#webpage`,
     name: page.title,
     description,
     image,
     dateModified: sqliteDateToIso(page.updated_at),
     inLanguage: page.rendered_locale,
     url: canonicalUrl,
-    publisher: publisherStructuredData(),
+    publisher: { '@id': `${absoluteUrl('/')}#organization` },
   };
+  const structuredData = page.slug.toLowerCase() === 'about'
+    ? {
+        '@context': 'https://schema.org',
+        '@graph': [
+          webPageData,
+          { ...personStructuredData(blog.author, page.rendered_locale), mainEntityOfPage: { '@id': `${canonicalUrl}#webpage` } },
+          publisherStructuredData(),
+        ],
+      }
+    : { '@context': 'https://schema.org', ...webPageData };
   if (page.status !== 'published') {
     res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
   }
@@ -403,6 +488,9 @@ app.get('/page/:locale/:slug', (req, res) => {
     htmlLang: page.rendered_locale,
     ogType: 'website',
     ogImage: image,
+    ogImageAlt: page.title,
+    authorName: page.slug.toLowerCase() === 'about' ? blog.author : undefined,
+    documentTitle: page.slug.toLowerCase() === 'about' ? `${blog.author} — Photographer | ${blog.title}` : '',
     modifiedAt: sqliteDateToIso(page.updated_at),
     robots: page.status === 'published'
       ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
@@ -442,11 +530,20 @@ app.get('/galleries', (req, res) => {
     structuredData,
     ogType: 'website',
     ogImage: image,
+    ogImageAlt: 'Photography collections',
   });
 });
 
 app.get('/gallery', (req, res) => {
   res.redirect(301, '/galleries');
+});
+
+app.get(/^\/gallery\/([^/]+)\.md$/, (req, res) => {
+  const gallery = getGalleryBySlug(req.params[0]);
+  if (!gallery) return res.status(404).type('text').send('Not found');
+  const canonicalUrl = absoluteUrl(galleryUrl(gallery.slug));
+  res.set('Link', `<${canonicalUrl}>; rel="canonical", <${absoluteUrl('/llms.txt')}>; rel="describedby"`);
+  res.type('text/markdown; charset=utf-8').send(renderGalleryMarkdown(gallery, canonicalUrl));
 });
 
 app.get('/gallery/:slug', (req, res) => {
@@ -465,7 +562,7 @@ app.get('/gallery/:slug', (req, res) => {
     image,
     datePublished: gallery.published_at,
     dateModified: sqliteDateToIso(gallery.updated_at),
-    author: { '@type': 'Person', name: gallery.author },
+    author: { '@type': 'Person', name: gallery.author, url: absoluteUrl(pageUrl(res.locals.locale, 'about')) },
     publisher: publisherStructuredData(),
     associatedMedia: gallery.photos.map(photo => ({
       '@type': 'ImageObject',
@@ -481,6 +578,9 @@ app.get('/gallery/:slug', (req, res) => {
     structuredData,
     ogType: 'website',
     ogImage: image,
+    ogImageAlt: gallery.name,
+    authorName: gallery.author,
+    markdownUrl: absoluteUrl(`${galleryUrl(gallery.slug)}.md`),
     publishedAt: gallery.published_at,
     modifiedAt: sqliteDateToIso(gallery.updated_at),
   });
@@ -575,7 +675,7 @@ app.post(
     if (!image) return res.status(415).json({ error: '仅支持 JPEG、PNG、WebP、GIF 或 AVIF 图片。' });
 
     try {
-      const url = await storeImage(req.body, image);
+      const url = await storeImage(req.body, image, req.get('X-File-Name'));
       res.status(201).json({ url, mimeType: image.mimeType, size: req.body.length });
     } catch (error) {
       console.error('图片上传失败：', error);
@@ -730,7 +830,7 @@ app.post(
     if (!image) return res.status(415).json({ error: '仅支持 JPEG、PNG、WebP、GIF 或 AVIF 图片。' });
 
     try {
-      const imageUrl = await storeImage(req.body, image);
+      const imageUrl = await storeImage(req.body, image, req.get('X-File-Name'));
       const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM gallery_photos WHERE gallery_id = ?').get(galleryId).next_position;
       const photoId = Number(db.prepare(`
         INSERT INTO gallery_photos (gallery_id, image_url, position) VALUES (?, ?, ?)
@@ -902,11 +1002,11 @@ function createSpacesStorage() {
   return { bucket, publicUrl, client };
 }
 
-async function storeImage(buffer, image) {
+async function storeImage(buffer, image, encodedOriginalName = '') {
   const now = new Date();
   const year = String(now.getUTCFullYear());
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const filename = `${crypto.randomUUID()}.${image.extension}`;
+  const filename = `${seoImageBasename(encodedOriginalName)}-${crypto.randomBytes(6).toString('hex')}.${image.extension}`;
   const objectKey = `${imagePrefix}/${year}/${month}/${filename}`;
 
   if (imageStorage === 'spaces') {
@@ -926,6 +1026,21 @@ async function storeImage(buffer, image) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.writeFileSync(destination, buffer, { flag: 'wx', mode: 0o640 });
   return `${imagePublicPath}/${objectKey}`;
+}
+
+function seoImageBasename(encodedName) {
+  let name = String(encodedName || '');
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // Keep the raw header value and sanitize it below.
+  }
+  const extensionless = path.basename(name).replace(/\.[A-Za-z0-9]{2,5}$/, '');
+  return extensionless.normalize('NFKD').toLowerCase()
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72) || 'photo';
 }
 
 function requiredEnvironment(name) {
@@ -969,6 +1084,28 @@ function feedPath(locale) {
   return locale === defaultLocale ? '/feed.xml' : `/feed.xml?lang=${encodeURIComponent(locale)}`;
 }
 
+function topicsPath(locale) {
+  return locale === defaultLocale ? '/topics' : `/topics?lang=${encodeURIComponent(locale)}`;
+}
+
+function topicPath(slug, locale) {
+  const pathname = `/topics/${encodeURIComponent(slug)}`;
+  return locale === defaultLocale ? pathname : `${pathname}?lang=${encodeURIComponent(locale)}`;
+}
+
+function preferredParameterizedLocale(req, res, pathname) {
+  const requestedLocale = parameterLocale(req);
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    const target = selectedLocale === defaultLocale ? pathname : `${pathname}?lang=${encodeURIComponent(selectedLocale)}`;
+    res.redirect(302, target);
+    return null;
+  }
+  const locale = selectedLocale || requestedLocale;
+  setResponseLocale(res, locale);
+  return locale;
+}
+
 function parameterLocale(req) {
   return normalizeLocale(req.query.lang) || defaultLocale;
 }
@@ -981,6 +1118,66 @@ function archiveDescription(locale) {
   return (archiveCopy[locale] || archiveCopy.en).description;
 }
 
+function seoCopy(locale) {
+  return seoCopyByLocale[locale] || seoCopyByLocale.en;
+}
+
+function buildSeoCopy() {
+  const defaults = {
+    zh: {
+      title: `${blog.title} — 摄影作品、摄影写作与视觉文化`,
+      description: `Afterimage Photography 是摄影师 ${blog.author} 的独立摄影档案与写作网站，关注街头摄影、纪实摄影、摄影文化、摄影史与个人视觉项目。`,
+      introductionTitle: 'About Afterimage',
+      introduction: `Afterimage Photography 是摄影师 ${blog.author} 的独立摄影档案与摄影写作网站，关注街头摄影、纪实摄影、摄影文化、摄影史以及个人视觉项目。`,
+      aboutLink: '关于作者', topicsTitle: '主题', topicsDescription: '按摄影主题浏览文章与视觉研究。',
+      topicLabel: '主题', relatedTitle: '相关文章', articlesLabel: '篇文章', noTopics: '暂时还没有主题。',
+    },
+    en: {
+      title: `${blog.title} — Photography, Essays & Visual Stories`,
+      description: `Afterimage Photography is an independent photography journal and visual archive by photographer ${blog.author}, exploring street photography, documentary work, visual culture and photography history.`,
+      introductionTitle: 'About Afterimage',
+      introduction: `Afterimage Photography is an independent photography journal and visual archive by photographer ${blog.author}, exploring street photography, documentary photography, visual culture, photography history and personal projects.`,
+      aboutLink: 'About the photographer', topicsTitle: 'Topics', topicsDescription: 'Browse essays and visual research by photography topic.',
+      topicLabel: 'Topic', relatedTitle: 'Related essays', articlesLabel: 'articles', noTopics: 'No topics yet.',
+    },
+    ja: {
+      title: `${blog.title} — 写真作品、エッセイと視覚文化`,
+      description: `Afterimage Photography は写真家 ${blog.author} による独立した写真アーカイブと執筆サイトです。ストリート写真、ドキュメンタリー、視覚文化、写真史を扱います。`,
+      introductionTitle: 'Afterimage について',
+      introduction: `Afterimage Photography は写真家 ${blog.author} による独立した写真アーカイブと写真エッセイのサイトです。ストリート写真、ドキュメンタリー写真、視覚文化、写真史、個人プロジェクトを扱います。`,
+      aboutLink: '写真家について', topicsTitle: 'トピック', topicsDescription: '写真のテーマからエッセイと視覚研究を探す。',
+      topicLabel: 'トピック', relatedTitle: '関連記事', articlesLabel: '記事', noTopics: 'トピックはまだありません。',
+    },
+  };
+  return Object.fromEntries(configuredLocales.map(locale => {
+    const fallback = defaults[locale] || defaults.en;
+    const suffix = locale.toUpperCase().replaceAll('-', '_');
+    return [locale, {
+      ...fallback,
+      title: String(process.env[`HOME_SEO_TITLE_${suffix}`] || fallback.title).trim(),
+      description: String(process.env[`HOME_SEO_DESCRIPTION_${suffix}`] || fallback.description).trim(),
+      introduction: String(process.env[`HOME_INTRO_${suffix}`] || fallback.introduction).trim(),
+    }];
+  }));
+}
+
+function normalizeSocialUrls(value) {
+  return String(value || '').split(',').map(item => item.trim()).filter(item => {
+    try {
+      const url = new URL(item);
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function localizedTopicDescription(name, count, locale) {
+  if (locale === 'zh') return `浏览 Afterimage Photography 中关于「${name}」的 ${count} 篇文章与摄影思考。`;
+  if (locale === 'ja') return `Afterimage Photography の「${name}」に関する ${count} 件の記事と写真考察。`;
+  return `Browse ${count} ${count === 1 ? 'article' : 'articles'} about ${name} from Afterimage Photography.`;
+}
+
 function serializeJsonLd(value) {
   return JSON.stringify(value).replaceAll('<', '\\u003c');
 }
@@ -988,9 +1185,40 @@ function serializeJsonLd(value) {
 function publisherStructuredData() {
   return {
     '@type': 'Organization',
+    '@id': `${absoluteUrl('/')}#organization`,
     name: blog.title,
     url: absoluteUrl('/'),
     logo: { '@type': 'ImageObject', url: absoluteUrl('/apple-touch-icon.png') },
+    founder: { '@id': `${absoluteUrl(pageUrl(defaultLocale, 'about'))}#person` },
+  };
+}
+
+function personStructuredData(name, locale) {
+  const url = absoluteUrl(pageUrl(locale, 'about'));
+  return {
+    '@type': 'Person',
+    '@id': `${url}#person`,
+    name: String(name || blog.author),
+    jobTitle: 'Photographer',
+    url,
+    ...(socialUrls.length ? { sameAs: socialUrls } : {}),
+  };
+}
+
+function collectionStructuredData(name, description, url, locale, items) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name,
+    description,
+    url,
+    inLanguage: locale,
+    isPartOf: { '@id': `${absoluteUrl('/')}#website` },
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: items.length,
+      itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, ...item })),
+    },
   };
 }
 
@@ -1026,6 +1254,9 @@ function setResponseLocale(res, locale) {
   res.locals.feedUrl = feedPath(locale);
   res.locals.formatDate = formatDate;
   res.locals.postUrl = slug => postUrl(locale, slug);
+  res.locals.topicUrl = category => topicPath(topicSlug(category), locale);
+  res.locals.topicPath = slug => topicPath(slug, locale);
+  res.locals.seoCopy = seoCopy(locale);
 }
 
 function formatDate(value) {
@@ -1074,9 +1305,21 @@ function getPublishedPageTranslations() {
 
 function buildSitemap() {
   const urls = [
-    `  <url><loc>${escapeXml(absoluteUrl('/'))}</loc></url>`,
     `  <url><loc>${escapeXml(absoluteUrl('/galleries'))}</loc></url>`,
   ];
+
+  const homeAlternates = configuredLocales.map(locale =>
+    `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(absoluteUrl(homePath(locale)))}" />`
+  );
+  homeAlternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl('/'))}" />`);
+  for (const locale of configuredLocales) {
+    urls.push([
+      '  <url>',
+      `    <loc>${escapeXml(absoluteUrl(homePath(locale)))}</loc>`,
+      ...homeAlternates,
+      '  </url>',
+    ].join('\n'));
+  }
 
   const archiveAlternates = configuredLocales.map(locale =>
     `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(absoluteUrl(archivePath(locale)))}" />`
@@ -1089,6 +1332,42 @@ function buildSitemap() {
       ...archiveAlternates,
       '  </url>',
     ].join('\n'));
+  }
+
+  const topicsAlternates = configuredLocales.map(locale =>
+    `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(absoluteUrl(topicsPath(locale)))}" />`
+  );
+  topicsAlternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(topicsPath(defaultLocale)))}" />`);
+  for (const locale of configuredLocales) {
+    urls.push([
+      '  <url>',
+      `    <loc>${escapeXml(absoluteUrl(topicsPath(locale)))}</loc>`,
+      ...topicsAlternates,
+      '  </url>',
+    ].join('\n'));
+  }
+
+  const topicGroups = new Map();
+  for (const locale of configuredLocales) {
+    for (const topic of getTopics(locale)) {
+      if (!topicGroups.has(topic.slug)) topicGroups.set(topic.slug, []);
+      topicGroups.get(topic.slug).push({ locale, topic });
+    }
+  }
+  for (const entries of topicGroups.values()) {
+    const xDefault = entries.find(entry => entry.locale === defaultLocale) || entries[0];
+    const alternates = entries.map(entry =>
+      `    <xhtml:link rel="alternate" hreflang="${escapeXml(entry.locale)}" href="${escapeXml(absoluteUrl(topicPath(entry.topic.slug, entry.locale)))}" />`
+    );
+    alternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(topicPath(xDefault.topic.slug, xDefault.locale)))}" />`);
+    for (const entry of entries) {
+      urls.push([
+        '  <url>',
+        `    <loc>${escapeXml(absoluteUrl(topicPath(entry.topic.slug, entry.locale)))}</loc>`,
+        ...alternates,
+        '  </url>',
+      ].join('\n'));
+    }
   }
 
   const collections = [
@@ -1144,10 +1423,16 @@ function buildLlmsText() {
     const note = articleDescription(row).replace(/\s+/g, ' ');
     return `- [${escapeMarkdownLabel(row.title)}](${absoluteUrl(`${pageUrl(row.locale, row.slug)}.md`)}): ${row.locale}; ${note}`;
   });
+  const topics = configuredLocales.flatMap(locale => getTopics(locale).map(topic =>
+    `- [${escapeMarkdownLabel(topic.name)}](${absoluteUrl(topicPath(topic.slug, locale))}): ${locale}; ${topic.count} ${topic.count === 1 ? 'article' : 'articles'}`
+  ));
+  const galleries = getPublishedGalleries().map(gallery =>
+    `- [${escapeMarkdownLabel(gallery.name)}](${absoluteUrl(`${galleryUrl(gallery.slug)}.md`)}): ${gallery.description || `${gallery.author} photo collection`}`
+  );
   return [
     `# ${blog.title}`,
     '',
-    `> ${blog.description.replace(/\s+/g, ' ')}`,
+    `> ${seoCopy(defaultLocale).description.replace(/\s+/g, ' ')}`,
     '',
     '这是一个关于摄影、观看、摄影书、摄影师与器材的多语言个人博客。文章链接指向与网页内容对应的纯 Markdown 版本。',
     '',
@@ -1158,6 +1443,14 @@ function buildLlmsText() {
     '## Pages',
     '',
     ...(pages.length ? pages : ['- 暂无已发布页面。']),
+    '',
+    '## Photography Collections',
+    '',
+    ...(galleries.length ? galleries : ['- 暂无公开摄影合集。']),
+    '',
+    '## Topics',
+    '',
+    ...(topics.length ? topics : ['- 暂无主题页面。']),
     '',
     '## Optional',
     '',
@@ -1176,12 +1469,16 @@ function buildLlmsFullText() {
     const canonicalUrl = absoluteUrl(pageUrl(row.locale, row.slug));
     return renderPageMarkdown(row, canonicalUrl);
   });
+  const gallerySections = getPublishedGalleries().map(row => {
+    const gallery = getGalleryBySlug(row.slug);
+    return renderGalleryMarkdown(gallery, absoluteUrl(galleryUrl(gallery.slug)));
+  });
   const introduction = [
     `# ${blog.title} — Full Content`,
     '',
-    `> ${blog.description.replace(/\s+/g, ' ')}`,
+    `> ${seoCopy(defaultLocale).description.replace(/\s+/g, ' ')}`,
   ].join('\n');
-  return [introduction, ...articleSections, ...pageSections].join('\n\n---\n\n');
+  return [introduction, ...articleSections, ...pageSections, ...gallerySections].join('\n\n---\n\n');
 }
 
 function renderPostMarkdown(post, canonicalUrl) {
@@ -1212,6 +1509,28 @@ function renderPageMarkdown(page, canonicalUrl) {
     '',
     String(page.body || '').trim(),
     '',
+  ].join('\n');
+}
+
+function renderGalleryMarkdown(gallery, canonicalUrl) {
+  return [
+    `# ${gallery.name}`,
+    '',
+    ...(gallery.description ? [`> ${gallery.description.replace(/\s*\n\s*/g, ' ')}`, ''] : []),
+    `- Type: Photography Collection`,
+    `- Published: ${formatDate(gallery.published_at)}`,
+    `- Author: ${gallery.author}`,
+    `- Photos: ${gallery.photos.length}`,
+    `- Canonical: ${canonicalUrl}`,
+    '',
+    ...gallery.photos.flatMap((photo, index) => [
+      `## Photo ${index + 1}`,
+      '',
+      `![${escapeMarkdownLabel(photo.description || `${gallery.name} photo ${index + 1}`)}](${absoluteUrl(photo.image_url)})`,
+      ...(photo.description ? ['', photo.description] : []),
+      ...(photo.taken_at ? ['', `Taken: ${formatDate(photo.taken_at)}`] : []),
+      '',
+    ]),
   ].join('\n');
 }
 
@@ -1289,6 +1608,9 @@ function escapeMarkdownLabel(value) {
 
 function localizePath(currentPath, locale) {
   if (currentPath === '/archive') return archivePath(locale);
+  if (currentPath === '/topics') return topicsPath(locale);
+  const topicMatch = currentPath.match(/^\/topics\/([^/]+)$/);
+  if (topicMatch) return topicPath(topicMatch[1], locale);
   if (/^\/galleries\/?$/.test(currentPath)) return '/galleries';
   if (/^\/gallery\/[^/]+\/?$/.test(currentPath)) return currentPath.replace(/\/$/, '');
   const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
@@ -1326,18 +1648,45 @@ function isAvailableLocale(locale) {
 }
 
 function renderMarkdown(markdown) {
-  return sanitizeHtml(marked.parse(markdown || ''), {
+  const html = sanitizeHtml(marked.parse(markdown || ''), {
     allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'figure', 'figcaption']),
     allowedAttributes: {
       ...sanitizeHtml.defaults.allowedAttributes,
       div: ['class'],
       span: ['class'],
-      img: ['src', 'alt', 'title', 'loading'],
+      img: ['src', 'alt', 'title', 'loading', 'decoding'],
     },
     allowedClasses: { div: ['image-stack'], span: ['image-row'] },
     allowedSchemes: ['http', 'https', 'mailto'],
-    transformTags: { img: sanitizeHtml.simpleTransform('img', { loading: 'lazy' }) },
+    transformTags: {
+      img: (tagName, attribs) => ({
+        tagName,
+        attribs: {
+          ...attribs,
+          alt: String(attribs.alt || '').trim() || imageAltFromUrl(attribs.src),
+          loading: 'lazy',
+          decoding: 'async',
+        },
+      }),
+    },
   });
+  return html.replace(/<img\b[^>]*>/i, tag => {
+    const prioritized = tag.replace(/\sloading="[^"]*"/, '');
+    return prioritized.replace('<img', '<img loading="eager" fetchpriority="high"');
+  });
+}
+
+function imageAltFromUrl(value) {
+  try {
+    const pathname = new URL(String(value || ''), `${siteUrl}/`).pathname;
+    const filename = decodeURIComponent(path.basename(pathname)).replace(/\.[A-Za-z0-9]{2,5}$/, '')
+      .replace(/-[a-f0-9]{12}$/i, '')
+      .replace(/^[a-f0-9-]{24,}$/i, '');
+    const label = filename.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return label || 'Photography image';
+  } catch {
+    return 'Photography image';
+  }
 }
 
 function isImageOnlyParagraph(token) {
@@ -1369,6 +1718,41 @@ function getPublishedPostsByExactLocale(locale) {
     WHERE p.status = 'published'
     ORDER BY p.published_at DESC, p.id DESC
   `).all(locale).map(withPostMetadata);
+}
+
+function topicSlug(category) {
+  return String(category || '').normalize('NFKC').toLocaleLowerCase('en')
+    .replace(/[’']/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'uncategorized';
+}
+
+function getTopics(locale) {
+  const topics = new Map();
+  for (const post of getPublishedPostsByExactLocale(locale)) {
+    const name = String(post.category || '').trim();
+    if (!name) continue;
+    const slug = topicSlug(name);
+    const topic = topics.get(slug) || { slug, name, count: 0, posts: [] };
+    topic.count += 1;
+    topic.posts.push(post);
+    topics.set(slug, topic);
+  }
+  return [...topics.values()].sort((left, right) => left.name.localeCompare(right.name, locale));
+}
+
+function getTopic(slug, locale) {
+  const normalizedSlug = topicSlug(slug);
+  return getTopics(locale).find(topic => topic.slug === normalizedSlug) || null;
+}
+
+function getRelatedPosts(post, locale, limit = 4) {
+  const category = String(post.category || '').trim().toLocaleLowerCase(locale);
+  if (!category) return [];
+  return getPublishedPostsByExactLocale(locale)
+    .filter(item => item.id !== post.id && String(item.category || '').trim().toLocaleLowerCase(locale) === category)
+    .slice(0, limit);
 }
 
 function archiveExcerpt(post, maxLength = 260) {
@@ -1962,6 +2346,7 @@ function isNavigationActive(url, currentPath) {
   const requestPath = internalNavigationPath(currentPath);
   if (!navigationPath || !requestPath) return false;
   if (navigationPath === requestPath) return true;
+  if (navigationPath === '/topics' && requestPath.startsWith('/topics/')) return true;
   if (navigationPath === '/galleries' && requestPath.startsWith('/gallery/')) return true;
   if (navigationPath === '/gallery' && (requestPath === '/galleries' || requestPath.startsWith('/gallery/'))) return true;
 

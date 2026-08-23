@@ -1,0 +1,22 @@
+<%- include('partials/head', { pageTitle: topic.name, description }) %>
+<main class="taxonomy-main">
+  <section class="taxonomy-inner" aria-labelledby="topic-title">
+    <header class="taxonomy-header">
+      <p class="eyebrow"><%= copy.topicLabel %></p>
+      <h1 id="topic-title"><%= topic.name %></h1>
+      <p><%= description %></p>
+    </header>
+    <div class="topic-post-list">
+      <% topic.posts.forEach(post => { %>
+        <article>
+          <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
+          <div>
+            <h2><a href="/post/<%= post.rendered_locale %>/<%= post.slug %>"><%= post.title %></a></h2>
+            <% if (post.summary) { %><p><%= post.summary %></p><% } %>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  </section>
+</main>
+<%- include('partials/footer') %>

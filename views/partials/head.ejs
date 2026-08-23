@@ -1,6 +1,8 @@
 <%
   const resolvedDescription = typeof description !== 'undefined' && description ? description : blog.description;
-  const resolvedTitle = typeof pageTitle !== 'undefined' && pageTitle ? `${pageTitle} — ${blog.title}` : blog.title;
+  const resolvedTitle = typeof documentTitle !== 'undefined' && documentTitle
+    ? documentTitle
+    : typeof pageTitle !== 'undefined' && pageTitle ? `${pageTitle} | ${blog.title}` : blog.title;
   const resolvedCanonical = typeof canonicalUrl !== 'undefined' ? canonicalUrl : siteUrl;
   const resolvedRobots = typeof robots !== 'undefined' ? robots : 'index, follow';
   const resolvedOgType = typeof ogType !== 'undefined' ? ogType : 'website';
@@ -13,6 +15,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="<%= resolvedDescription %>">
+  <% if (typeof authorName !== 'undefined' && authorName) { %><meta name="author" content="<%= authorName %>"><% } %>
   <meta name="robots" content="<%= resolvedRobots %>">
   <title><%= resolvedTitle %></title>
   <link rel="icon" href="/favicon.ico" sizes="50x50">
@@ -30,17 +33,21 @@
   <meta property="og:description" content="<%= resolvedDescription %>">
   <meta property="og:url" content="<%= resolvedCanonical %>">
   <meta property="og:image" content="<%= resolvedOgImage %>">
+  <meta property="og:image:alt" content="<%= typeof ogImageAlt !== 'undefined' && ogImageAlt ? ogImageAlt : resolvedTitle %>">
   <meta property="og:locale" content="<%= resolvedLang.replaceAll('-', '_') %>">
   <% if (typeof alternateUrls !== 'undefined') { alternateUrls.filter(item => item.locale !== resolvedLang).forEach(item => { %><meta property="og:locale:alternate" content="<%= item.locale.replaceAll('-', '_') %>">
   <% }) } %>
   <% if (typeof publishedAt !== 'undefined' && publishedAt) { %><meta property="article:published_time" content="<%= publishedAt %>"><% } %>
   <% if (typeof modifiedAt !== 'undefined' && modifiedAt) { %><meta property="article:modified_time" content="<%= modifiedAt %>"><% } %>
-  <meta name="twitter:card" content="summary">
+  <% if (typeof articleAuthorUrl !== 'undefined' && articleAuthorUrl) { %><meta property="article:author" content="<%= articleAuthorUrl %>"><% } %>
+  <% if (typeof articleSection !== 'undefined' && articleSection) { %><meta property="article:section" content="<%= articleSection %>"><% } %>
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="<%= resolvedTitle %>">
   <meta name="twitter:description" content="<%= resolvedDescription %>">
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
+  <meta name="twitter:image:alt" content="<%= typeof ogImageAlt !== 'undefined' && ogImageAlt ? ogImageAlt : resolvedTitle %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=33">
+  <link rel="stylesheet" href="/style.css?v=34">
   <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">
