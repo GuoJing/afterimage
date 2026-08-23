@@ -168,6 +168,11 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
+  const selectedLocale = getSelectedLocale(req);
+  const requestedLocale = parameterLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    return res.redirect(302, homePath(selectedLocale));
+  }
   const posts = getPublishedPosts(res.locals.locale);
   const canonicalUrl = absoluteUrl(homePath(res.locals.locale));
   const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(homePath(code)) }));
@@ -184,7 +189,12 @@ app.get('/', (req, res) => {
 });
 
 app.get('/archive', (req, res) => {
-  const locale = parameterLocale(req);
+  const requestedLocale = parameterLocale(req);
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    return res.redirect(302, archivePath(selectedLocale));
+  }
+  const locale = selectedLocale || requestedLocale;
   setResponseLocale(res, locale);
   const posts = getPublishedPostsByExactLocale(locale);
   const title = archiveTitle(locale);
@@ -239,8 +249,13 @@ app.get(/^\/post\/([^/]+)\/([^/]+)\.md$/, (req, res) => {
 });
 
 app.get('/post/:locale/:slug', (req, res) => {
-  const locale = normalizeLocale(req.params.locale);
-  if (!locale) return res.status(404).render('not-found');
+  const requestedLocale = normalizeLocale(req.params.locale);
+  if (!requestedLocale) return res.status(404).render('not-found');
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    return res.redirect(302, postUrl(selectedLocale, req.params.slug));
+  }
+  const locale = selectedLocale || requestedLocale;
   setResponseLocale(res, locale);
   const post = getPostBySlug(req.params.slug, locale);
   if (!post || (post.status !== 'published' && !req.session.isAdmin)) return res.status(404).render('not-found');
@@ -297,8 +312,13 @@ app.get(/^\/page\/([^/]+)\/([^/]+)\.md$/, (req, res) => {
 });
 
 app.get('/page/:locale/:slug', (req, res) => {
-  const locale = normalizeLocale(req.params.locale);
-  if (!locale) return res.status(404).render('not-found');
+  const requestedLocale = normalizeLocale(req.params.locale);
+  if (!requestedLocale) return res.status(404).render('not-found');
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    return res.redirect(302, pageUrl(selectedLocale, req.params.slug));
+  }
+  const locale = selectedLocale || requestedLocale;
   setResponseLocale(res, locale);
   const page = getPageBySlug(req.params.slug, locale);
   if (!page || (page.status !== 'published' && !req.session.isAdmin)) return res.status(404).render('not-found');
@@ -367,13 +387,14 @@ app.get('/llms-full.txt', (req, res) => {
 
 app.get('/language/:locale', (req, res) => {
   const locale = normalizeLocale(req.params.locale);
-  if (configuredLocales.includes(locale)) {
+  const canSelectLocale = isAvailableLocale(locale);
+  if (canSelectLocale) {
     res.cookie('afterimage.locale', locale, { httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 60 * 60 * 1000 });
   }
   const next = typeof req.query.next === 'string' && req.query.next.startsWith('/') && !req.query.next.startsWith('//')
     ? req.query.next
     : '/';
-  res.redirect(configuredLocales.includes(locale) ? localizePath(next, locale) : next);
+  res.redirect(canSelectLocale ? localizePath(next, locale) : next);
 });
 
 app.get(`${adminBasePath}/login`, (req, res) => {
@@ -1039,12 +1060,26 @@ function parseCookies(header = '') {
 }
 
 function pickLocale(req) {
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale) return selectedLocale;
   const queryLocale = normalizeLocale(req.query.lang);
-  if (configuredLocales.includes(queryLocale)) return queryLocale;
+  return configuredLocales.includes(queryLocale) ? queryLocale : defaultLocale;
+}
+
+function getSelectedLocale(req) {
   const cookieLocale = normalizeLocale(parseCookies(req.headers.cookie)['afterimage.locale']);
-  if (configuredLocales.includes(cookieLocale)) return cookieLocale;
-  const preferred = String(req.headers['accept-language'] || '').split(',').map(part => normalizeLocale(part.split(';')[0]));
-  return preferred.find(code => configuredLocales.includes(code)) || defaultLocale;
+  return isAvailableLocale(cookieLocale) ? cookieLocale : null;
+}
+
+function isAvailableLocale(locale) {
+  if (!locale) return false;
+  if (configuredLocales.includes(locale)) return true;
+  return Boolean(db.prepare(`
+    SELECT locale FROM post_translations WHERE locale = ?
+    UNION
+    SELECT locale FROM page_translations WHERE locale = ?
+    LIMIT 1
+  `).get(locale, locale));
 }
 
 function renderMarkdown(markdown) {

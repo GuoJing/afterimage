@@ -5,7 +5,7 @@
       <h1><%= page.title %></h1>
       <% if (page.availableLocales.length > 1) { %>
         <nav class="post-languages" aria-label="页面语言">
-          <% page.availableLocales.forEach(code => { %><a class="<%= code === page.rendered_locale ? 'active' : '' %>" href="/page/<%= code %>/<%= page.slug %>" <%- code === page.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
+          <% page.availableLocales.forEach(code => { const languagePath = `/page/${code}/${page.slug}`; %><a class="<%= code === page.rendered_locale ? 'active' : '' %>" href="/language/<%= code %>?next=<%= encodeURIComponent(languagePath) %>" <%- code === page.rendered_locale ? 'aria-current="page"' : '' %>><%= code.toUpperCase() %></a><% }) %>
         </nav>
       <% } %>
     </div>
