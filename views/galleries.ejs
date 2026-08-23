@@ -15,6 +15,18 @@
       <div class="gallery-index-grid">
         <% galleries.forEach(gallery => { const previewCount = gallery.preview_photos.length; %>
           <a class="gallery-index-card" href="/gallery/<%= encodeURIComponent(gallery.slug) %>" aria-label="<%= gallery.name %>, <%= gallery.photo_count %> photos">
+            <div class="gallery-index-card-body">
+              <div>
+                <h2><%= gallery.name %></h2>
+                <p class="gallery-index-meta">
+                  <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
+                  <span><%= gallery.author %></span>
+                  <span><%= gallery.photo_count %> photos</span>
+                </p>
+                <% if (gallery.description) { %><p class="gallery-index-description"><%= gallery.description %></p><% } %>
+              </div>
+              <span class="gallery-index-arrow" aria-hidden="true">↗</span>
+            </div>
             <div class="gallery-index-preview gallery-index-preview-<%= previewCount %>">
               <% if (previewCount) { %>
                 <% gallery.preview_photos.forEach((photo, index) => { %>
@@ -24,18 +36,6 @@
                 <span>EMPTY GALLERY</span>
               <% } %>
             </div>
-            <div class="gallery-index-card-body">
-              <div>
-                <h2><%= gallery.name %></h2>
-                <p class="gallery-index-meta">
-                  <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
-                  <span><%= gallery.author %></span>
-                  <span><%= gallery.photo_count %> photos</span>
-                </p>
-              </div>
-              <span class="gallery-index-arrow" aria-hidden="true">↗</span>
-            </div>
-            <% if (gallery.description) { %><p class="gallery-index-description"><%= gallery.description %></p><% } %>
           </a>
         <% }) %>
       </div>
