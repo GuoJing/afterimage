@@ -273,6 +273,7 @@ function initializeEditor(form) {
 }
 
 function initializeGalleryEditor(form) {
+  initializeGalleryThemePicker(form);
   const list = form.querySelector('[data-gallery-photo-list]');
   const imageInput = form.querySelector('[data-gallery-image-input]');
   const uploadStatus = form.querySelector('[data-gallery-upload-status]');
@@ -388,6 +389,32 @@ function initializeGalleryEditor(form) {
   function setStatus(message, state) {
     uploadStatus.textContent = message;
     uploadStatus.className = `gallery-upload-status ${state}`;
+  }
+}
+
+function initializeGalleryThemePicker(form) {
+  const picker = form.querySelector('[data-gallery-theme-picker]');
+  if (!picker) return;
+  const choices = [...picker.querySelectorAll('[data-gallery-theme-choice]')];
+  const panels = [...picker.querySelectorAll('[data-gallery-theme-panel]')];
+  const badge = picker.querySelector('[data-gallery-theme-badge]');
+
+  picker.addEventListener('change', event => {
+    const input = event.target.closest('[name="gallery_theme"]');
+    if (!input) return;
+    selectTheme(input.value);
+  });
+
+  function selectTheme(theme) {
+    choices.forEach(choice => {
+      const input = choice.querySelector('[name="gallery_theme"]');
+      const selected = input.value === theme;
+      choice.classList.toggle('is-selected', selected);
+      choice.setAttribute('aria-checked', String(selected));
+    });
+    panels.forEach(panel => { panel.hidden = panel.dataset.galleryThemePanel !== theme; });
+    const selectedChoice = choices.find(choice => choice.querySelector('[name="gallery_theme"]').value === theme);
+    if (badge && selectedChoice) badge.textContent = selectedChoice.querySelector('strong').textContent;
   }
 }
 

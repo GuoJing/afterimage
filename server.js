@@ -34,6 +34,19 @@ const archiveCopy = {
   en: { title: 'Archive', description: 'Browse all published posts by date.' },
   ja: { title: 'アーカイブ', description: '公開済みの記事を日付順に表示します。' },
 };
+const galleryThemes = [
+  { id: 'masonry', name: '瀑布流', description: '保留照片原始比例，自然向下排列。' },
+  { id: 'grid', name: '平铺网格', description: '统一画幅和列数，呈现规整的作品墙。' },
+  { id: 'fade', name: '渐隐画廊', description: '以单张大图渐变切换，适合叙事浏览。' },
+  { id: 'justified', name: '智能拼接', description: '按照片比例自动组合成宽度一致的图片行。' },
+];
+const galleryThemeIds = new Set(galleryThemes.map(theme => theme.id));
+const galleryThemeDefaults = {
+  masonry: { columnsDesktop: 4, columnsTablet: 3, gap: 16, showCaptions: true },
+  grid: { columnsDesktop: 4, columnsTablet: 2, gap: 12, aspectRatio: '3:2', imageFit: 'cover' },
+  fade: { autoplay: true, intervalMs: 5000, transitionMs: 900, imageFit: 'contain', showThumbnails: true },
+  justified: { targetRowHeight: 320, maxRowHeight: 480, gap: 10, lastRow: 'left', showCaptions: false },
+};
 
 const imageStorage = String(process.env.IMAGE_STORAGE || 'local').trim().toLowerCase();
 if (!['local', 'spaces'].includes(imageStorage)) throw new Error('IMAGE_STORAGE 只能是 local 或 spaces');
@@ -196,6 +209,7 @@ app.use((req, res, next) => {
   res.locals.imageMaxBytes = imageMaxBytes;
   res.locals.serializeJsonLd = serializeJsonLd;
   res.locals.datetimeLocalValue = datetimeLocalValue;
+  res.locals.galleryThemes = galleryThemes;
   setResponseLocale(res, locale);
   next();
 });
@@ -1469,7 +1483,8 @@ function withGalleryDefaults(gallery) {
   gallery.name = String(gallery.name || '').trim();
   gallery.description = String(gallery.description || '').trim();
   gallery.author = String(gallery.author || '').trim() || 'GuoJing';
-  gallery.settings_json = formatSettingsJson(gallery.settings_json);
+  gallery.theme_settings = parseStoredGallerySettings(gallery.settings_json);
+  gallery.settings_json = JSON.stringify(gallery.theme_settings);
   return gallery;
 }
 
@@ -1480,7 +1495,8 @@ function emptyGallery() {
     author: 'GuoJing',
     published_at: currentLocalDateTime(),
     cover_photo_id: null,
-    settings_json: '{}',
+    theme_settings: defaultGallerySettings(),
+    settings_json: JSON.stringify(defaultGallerySettings()),
     photos: [],
   };
 }
@@ -1491,6 +1507,7 @@ function currentLocalDateTime() {
 }
 
 function galleryFromBody(body, persisted = null) {
+  const themeSettings = gallerySettingsFromBody(body, false);
   const gallery = {
     ...(persisted || emptyGallery()),
     name: String(body.name || ''),
@@ -1498,7 +1515,8 @@ function galleryFromBody(body, persisted = null) {
     author: String(body.author || '').trim() || 'GuoJing',
     published_at: String(body.published_at || ''),
     cover_photo_id: body.cover_photo_id ? Number(body.cover_photo_id) : null,
-    settings_json: String(body.settings_json || '{}'),
+    theme_settings: themeSettings,
+    settings_json: JSON.stringify(themeSettings),
   };
   if (persisted?.photos) {
     const descriptions = submittedPhotoValues(body, 'photo_description');
@@ -1517,7 +1535,7 @@ const persistGallery = db.transaction((id, data) => {
   const description = String(data.description || '').trim();
   const author = String(data.author || '').trim() || 'GuoJing';
   const publishedAt = normalizeOptionalDate(data.published_at, false);
-  const settingsJson = normalizeSettingsJson(data.settings_json);
+  const settingsJson = normalizeGallerySettingsJson(data);
   if (!name || name.length > 160) throw new Error('INVALID_GALLERY_NAME');
   if (description.length > 5000) throw new Error('INVALID_GALLERY_DESCRIPTION');
   if (author.length > 100) throw new Error('INVALID_AUTHOR');
@@ -1564,25 +1582,96 @@ function saveGallery(id, data) {
   return persistGallery(id, data);
 }
 
-function normalizeSettingsJson(value) {
-  const source = String(value || '').trim() || '{}';
-  let settings;
-  try {
-    settings = JSON.parse(source);
-  } catch {
-    throw new Error('INVALID_GALLERY_SETTINGS');
-  }
-  if (!settings || Array.isArray(settings) || typeof settings !== 'object') throw new Error('INVALID_GALLERY_SETTINGS');
-  return JSON.stringify(settings);
+function defaultGallerySettings(theme = 'masonry') {
+  return { theme, options: { ...galleryThemeDefaults[theme] } };
 }
 
-function formatSettingsJson(value) {
+function parseStoredGallerySettings(value) {
   try {
-    const settings = JSON.parse(String(value || '{}'));
-    return JSON.stringify(settings, null, 2);
+    return normalizeGallerySettingsObject(JSON.parse(String(value || '{}')), false);
   } catch {
-    return '{}';
+    return defaultGallerySettings();
   }
+}
+
+function normalizeGallerySettingsJson(data) {
+  if (data.gallery_theme !== undefined) return JSON.stringify(gallerySettingsFromBody(data, true));
+  try {
+    return JSON.stringify(normalizeGallerySettingsObject(JSON.parse(String(data.settings_json || '{}')), true));
+  } catch (error) {
+    if (error.message?.startsWith('INVALID_GALLERY_THEME')) throw error;
+    throw new Error('INVALID_GALLERY_THEME');
+  }
+}
+
+function gallerySettingsFromBody(data, strict) {
+  const theme = String(data.gallery_theme || 'masonry').trim();
+  if (!galleryThemeIds.has(theme)) {
+    if (strict) throw new Error('INVALID_GALLERY_THEME');
+    return defaultGallerySettings();
+  }
+  const prefix = `theme_${theme}_`;
+  const options = {};
+  if (theme === 'masonry') {
+    options.columnsDesktop = galleryInteger(data[`${prefix}columns_desktop`], 4, 2, 6, strict);
+    options.columnsTablet = galleryInteger(data[`${prefix}columns_tablet`], 3, 1, 4, strict);
+    options.gap = galleryInteger(data[`${prefix}gap`], 16, 0, 48, strict);
+    options.showCaptions = data[`${prefix}show_captions`] === '1';
+  } else if (theme === 'grid') {
+    options.columnsDesktop = galleryInteger(data[`${prefix}columns_desktop`], 4, 2, 6, strict);
+    options.columnsTablet = galleryInteger(data[`${prefix}columns_tablet`], 2, 1, 4, strict);
+    options.gap = galleryInteger(data[`${prefix}gap`], 12, 0, 48, strict);
+    options.aspectRatio = galleryChoice(data[`${prefix}aspect_ratio`], '3:2', ['natural', '1:1', '4:3', '3:2', '16:9'], strict);
+    options.imageFit = galleryChoice(data[`${prefix}image_fit`], 'cover', ['cover', 'contain'], strict);
+  } else if (theme === 'fade') {
+    options.autoplay = data[`${prefix}autoplay`] === '1';
+    options.intervalMs = galleryInteger(data[`${prefix}interval_ms`], 5000, 2000, 15000, strict);
+    options.transitionMs = galleryInteger(data[`${prefix}transition_ms`], 900, 200, 3000, strict);
+    options.imageFit = galleryChoice(data[`${prefix}image_fit`], 'contain', ['cover', 'contain'], strict);
+    options.showThumbnails = data[`${prefix}show_thumbnails`] === '1';
+  } else {
+    options.targetRowHeight = galleryInteger(data[`${prefix}target_row_height`], 320, 160, 600, strict);
+    options.maxRowHeight = galleryInteger(data[`${prefix}max_row_height`], 480, 200, 900, strict);
+    options.gap = galleryInteger(data[`${prefix}gap`], 10, 0, 40, strict);
+    options.lastRow = galleryChoice(data[`${prefix}last_row`], 'left', ['left', 'center', 'justify'], strict);
+    options.showCaptions = data[`${prefix}show_captions`] === '1';
+    if (strict && options.maxRowHeight < options.targetRowHeight) throw new Error('INVALID_GALLERY_THEME_OPTIONS');
+  }
+  return { theme, options };
+}
+
+function normalizeGallerySettingsObject(settings, strict) {
+  if (!settings || Array.isArray(settings) || typeof settings !== 'object') {
+    if (strict) throw new Error('INVALID_GALLERY_THEME');
+    return defaultGallerySettings();
+  }
+  if (strict && settings.theme !== undefined && !galleryThemeIds.has(settings.theme)) throw new Error('INVALID_GALLERY_THEME');
+  const theme = galleryThemeIds.has(settings.theme) ? settings.theme : 'masonry';
+  const source = settings.options && !Array.isArray(settings.options) && typeof settings.options === 'object' ? settings.options : {};
+  const normalizedSource = { ...galleryThemeDefaults[theme], ...source };
+  const data = { gallery_theme: theme };
+  const prefix = `theme_${theme}_`;
+  for (const [key, value] of Object.entries(normalizedSource)) {
+    const formKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    data[`${prefix}${formKey}`] = typeof value === 'boolean' ? (value ? '1' : undefined) : value;
+  }
+  return gallerySettingsFromBody(data, strict);
+}
+
+function galleryInteger(value, fallback, min, max, strict) {
+  if ((value === undefined || value === '') && !strict) return fallback;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) {
+    if (strict) throw new Error('INVALID_GALLERY_THEME_OPTIONS');
+    return fallback;
+  }
+  return number;
+}
+
+function galleryChoice(value, fallback, choices, strict) {
+  if (choices.includes(value)) return value;
+  if (strict) throw new Error('INVALID_GALLERY_THEME_OPTIONS');
+  return fallback;
 }
 
 function normalizeOptionalDate(value, allowEmpty) {
@@ -1713,7 +1802,8 @@ function friendlyError(error) {
   if (error.message === 'INVALID_CATEGORY') return '分类名称不能超过 100 个字符';
   if (error.message === 'INVALID_GALLERY_NAME') return 'Gallery 名称不能为空，且不能超过 160 个字符';
   if (error.message === 'INVALID_GALLERY_DESCRIPTION') return 'Gallery 描述不能超过 5000 个字符';
-  if (error.message === 'INVALID_GALLERY_SETTINGS') return '扩展设置必须是有效的 JSON 对象';
+  if (error.message === 'INVALID_GALLERY_THEME') return '请选择有效的 Gallery 皮肤';
+  if (error.message === 'INVALID_GALLERY_THEME_OPTIONS') return '皮肤参数超出允许范围，请检查后重试';
   if (error.message === 'INVALID_GALLERY_DATE') return '请输入有效的日期和时间';
   if (error.message === 'INVALID_GALLERY_PHOTO') return 'Gallery 中包含无效的照片，请刷新页面后重试';
   if (error.message === 'INVALID_PHOTO_DESCRIPTION') return '单张照片描述不能超过 1000 个字符';

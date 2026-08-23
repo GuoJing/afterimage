@@ -13,7 +13,7 @@
         <% galleries.forEach(gallery => { %>
           <a class="admin-card gallery-list-item" href="<%= adminBasePath %>/galleries/<%= gallery.id %>/edit">
             <span class="gallery-list-cover"><% if (gallery.cover_image_url) { %><img src="<%= gallery.cover_image_url %>" alt=""><% } else { %><span>无封面</span><% } %></span>
-            <span class="gallery-list-copy"><strong><%= gallery.name %></strong><small><%= gallery.author %> · <%= String(gallery.published_at).slice(0, 10) %></small></span>
+            <span class="gallery-list-copy"><strong><%= gallery.name %></strong><small><%= gallery.author %> · <%= String(gallery.published_at).slice(0, 10) %> · <%= galleryThemes.find(theme => theme.id === gallery.theme_settings?.theme)?.name || '瀑布流' %></small></span>
             <span class="gallery-list-count"><b><%= gallery.photo_count %></b><small>照片</small></span>
             <b class="gallery-list-arrow">›</b>
           </a>

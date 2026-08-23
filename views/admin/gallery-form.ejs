@@ -18,10 +18,75 @@
           <label>发布时间<input name="published_at" type="datetime-local" value="<%= datetimeLocalValue(gallery.published_at) %>" required></label>
           <label class="gallery-description-field">描述<textarea name="description" rows="4" maxlength="5000" placeholder="简要介绍这个 Gallery"><%= gallery.description || '' %></textarea></label>
         </div>
-        <details class="gallery-advanced-settings" <%= error && error.includes('JSON') ? 'open' : '' %>>
-          <summary>扩展设置（JSON）</summary>
-          <label>设置对象<textarea name="settings_json" rows="6" spellcheck="false"><%= gallery.settings_json || '{}' %></textarea><small>用于后续布局和展示选项；当前可以保持为 {}。</small></label>
-        </details>
+      </section>
+
+      <%
+        const selectedTheme = gallery.theme_settings?.theme || 'masonry';
+        const selectedThemeOptions = gallery.theme_settings?.options || {};
+        const themeValue = (theme, key, fallback) => selectedTheme === theme && selectedThemeOptions[key] !== undefined ? selectedThemeOptions[key] : fallback;
+      %>
+      <section class="admin-card gallery-theme-card" data-gallery-theme-picker>
+        <header class="gallery-theme-heading">
+          <div><p class="eyebrow">APPEARANCE</p><h2>Gallery 皮肤</h2><p>选择详情页的图片展示方式，再调整这套皮肤专属的参数。</p></div>
+          <span class="gallery-theme-badge" data-gallery-theme-badge><%= galleryThemes.find(theme => theme.id === selectedTheme)?.name || '瀑布流' %></span>
+        </header>
+        <div class="gallery-theme-choices">
+          <% galleryThemes.forEach(theme => { %>
+            <label class="gallery-theme-choice <%= selectedTheme === theme.id ? 'is-selected' : '' %>" data-gallery-theme-choice>
+              <input type="radio" name="gallery_theme" value="<%= theme.id %>" <%= selectedTheme === theme.id ? 'checked' : '' %>>
+              <span class="gallery-theme-preview theme-preview-<%= theme.id %>" aria-hidden="true">
+                <% if (theme.id === 'fade') { %><i></i><i></i><i></i><b>01 / 04</b><% } else { %><i></i><i></i><i></i><i></i><i></i><i></i><% } %>
+              </span>
+              <span class="gallery-theme-copy"><strong><%= theme.name %></strong><small><%= theme.description %></small></span>
+              <span class="gallery-theme-check">✓</span>
+            </label>
+          <% }) %>
+        </div>
+
+        <div class="gallery-theme-parameters">
+          <div class="gallery-theme-panel" data-gallery-theme-panel="masonry" <%= selectedTheme === 'masonry' ? '' : 'hidden' %>>
+            <header><strong>瀑布流参数</strong><span>图片保持原始比例</span></header>
+            <div class="gallery-parameter-grid">
+              <label>桌面列数<input type="number" name="theme_masonry_columns_desktop" min="2" max="6" value="<%= themeValue('masonry', 'columnsDesktop', 4) %>"></label>
+              <label>平板列数<input type="number" name="theme_masonry_columns_tablet" min="1" max="4" value="<%= themeValue('masonry', 'columnsTablet', 3) %>"></label>
+              <label>图片间距（px）<input type="number" name="theme_masonry_gap" min="0" max="48" value="<%= themeValue('masonry', 'gap', 16) %>"></label>
+              <label class="gallery-switch"><input type="checkbox" name="theme_masonry_show_captions" value="1" <%= themeValue('masonry', 'showCaptions', true) ? 'checked' : '' %>><span></span>显示照片描述</label>
+            </div>
+          </div>
+
+          <div class="gallery-theme-panel" data-gallery-theme-panel="grid" <%= selectedTheme === 'grid' ? '' : 'hidden' %>>
+            <header><strong>平铺网格参数</strong><span>所有图片使用统一画幅</span></header>
+            <div class="gallery-parameter-grid">
+              <label>桌面列数<input type="number" name="theme_grid_columns_desktop" min="2" max="6" value="<%= themeValue('grid', 'columnsDesktop', 4) %>"></label>
+              <label>平板列数<input type="number" name="theme_grid_columns_tablet" min="1" max="4" value="<%= themeValue('grid', 'columnsTablet', 2) %>"></label>
+              <label>图片间距（px）<input type="number" name="theme_grid_gap" min="0" max="48" value="<%= themeValue('grid', 'gap', 12) %>"></label>
+              <label>画幅比例<select name="theme_grid_aspect_ratio"><% [['natural','原始比例'],['1:1','正方形 1:1'],['4:3','标准 4:3'],['3:2','摄影 3:2'],['16:9','宽屏 16:9']].forEach(([value, label]) => { %><option value="<%= value %>" <%= themeValue('grid', 'aspectRatio', '3:2') === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+              <label>图片适配<select name="theme_grid_image_fit"><option value="cover" <%= themeValue('grid', 'imageFit', 'cover') === 'cover' ? 'selected' : '' %>>裁切铺满</option><option value="contain" <%= themeValue('grid', 'imageFit', 'cover') === 'contain' ? 'selected' : '' %>>完整显示</option></select></label>
+            </div>
+          </div>
+
+          <div class="gallery-theme-panel" data-gallery-theme-panel="fade" <%= selectedTheme === 'fade' ? '' : 'hidden' %>>
+            <header><strong>渐隐画廊参数</strong><span>单张大图平滑切换</span></header>
+            <div class="gallery-parameter-grid">
+              <label>停留时间（毫秒）<input type="number" name="theme_fade_interval_ms" min="2000" max="15000" step="100" value="<%= themeValue('fade', 'intervalMs', 5000) %>"></label>
+              <label>渐变时间（毫秒）<input type="number" name="theme_fade_transition_ms" min="200" max="3000" step="100" value="<%= themeValue('fade', 'transitionMs', 900) %>"></label>
+              <label>图片适配<select name="theme_fade_image_fit"><option value="contain" <%= themeValue('fade', 'imageFit', 'contain') === 'contain' ? 'selected' : '' %>>完整显示</option><option value="cover" <%= themeValue('fade', 'imageFit', 'contain') === 'cover' ? 'selected' : '' %>>裁切铺满</option></select></label>
+              <label class="gallery-switch"><input type="checkbox" name="theme_fade_autoplay" value="1" <%= themeValue('fade', 'autoplay', true) ? 'checked' : '' %>><span></span>自动播放</label>
+              <label class="gallery-switch"><input type="checkbox" name="theme_fade_show_thumbnails" value="1" <%= themeValue('fade', 'showThumbnails', true) ? 'checked' : '' %>><span></span>显示缩略图导航</label>
+            </div>
+          </div>
+
+          <div class="gallery-theme-panel" data-gallery-theme-panel="justified" <%= selectedTheme === 'justified' ? '' : 'hidden' %>>
+            <header><strong>智能拼接参数</strong><span>根据照片比例自动填满每一行</span></header>
+            <div class="gallery-parameter-grid">
+              <label>目标行高（px）<input type="number" name="theme_justified_target_row_height" min="160" max="600" value="<%= themeValue('justified', 'targetRowHeight', 320) %>"></label>
+              <label>最大行高（px）<input type="number" name="theme_justified_max_row_height" min="200" max="900" value="<%= themeValue('justified', 'maxRowHeight', 480) %>"></label>
+              <label>图片间距（px）<input type="number" name="theme_justified_gap" min="0" max="40" value="<%= themeValue('justified', 'gap', 10) %>"></label>
+              <label>末行对齐<select name="theme_justified_last_row"><option value="left" <%= themeValue('justified', 'lastRow', 'left') === 'left' ? 'selected' : '' %>>左对齐</option><option value="center" <%= themeValue('justified', 'lastRow', 'left') === 'center' ? 'selected' : '' %>>居中</option><option value="justify" <%= themeValue('justified', 'lastRow', 'left') === 'justify' ? 'selected' : '' %>>拉伸填满</option></select></label>
+              <label class="gallery-switch"><input type="checkbox" name="theme_justified_show_captions" value="1" <%= themeValue('justified', 'showCaptions', false) ? 'checked' : '' %>><span></span>显示照片描述</label>
+            </div>
+          </div>
+        </div>
       </section>
 
       <% if (!isNew) { %>
