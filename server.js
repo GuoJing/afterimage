@@ -410,6 +410,41 @@ app.get('/page/:locale/:slug', (req, res) => {
   });
 });
 
+app.get('/gallery', (req, res) => {
+  const galleries = getGalleriesForPublic();
+  const canonicalUrl = absoluteUrl('/gallery');
+  const description = `Browse ${blog.title} photo galleries.`;
+  const previewPhoto = galleries.find(gallery => gallery.preview_photos.length)?.preview_photos[0];
+  const image = previewPhoto?.image_url ? absoluteUrl(previewPhoto.image_url) : absoluteUrl('/apple-touch-icon.png');
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: `Gallery — ${blog.title}`,
+    description,
+    url: canonicalUrl,
+    image,
+    publisher: publisherStructuredData(),
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: galleries.length,
+      itemListElement: galleries.map((gallery, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: gallery.name,
+        url: absoluteUrl(galleryUrl(gallery.slug)),
+      })),
+    },
+  };
+  res.render('galleries', {
+    galleries,
+    description,
+    canonicalUrl,
+    structuredData,
+    ogType: 'website',
+    ogImage: image,
+  });
+});
+
 app.get('/gallery/:slug', (req, res) => {
   const gallery = getGalleryBySlug(req.params.slug);
   if (!gallery) return res.status(404).render('not-found');
@@ -1036,6 +1071,7 @@ function getPublishedPageTranslations() {
 function buildSitemap() {
   const urls = [
     `  <url><loc>${escapeXml(absoluteUrl('/'))}</loc></url>`,
+    `  <url><loc>${escapeXml(absoluteUrl('/gallery'))}</loc></url>`,
   ];
 
   const archiveAlternates = configuredLocales.map(locale =>
@@ -1249,7 +1285,7 @@ function escapeMarkdownLabel(value) {
 
 function localizePath(currentPath, locale) {
   if (currentPath === '/archive') return archivePath(locale);
-  if (/^\/gallery\/[^/]+$/.test(currentPath)) return currentPath;
+  if (/^\/gallery(?:\/[^/]+)?\/?$/.test(currentPath)) return currentPath.replace(/\/$/, '') || '/gallery';
   const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
   if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
   const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
@@ -1524,6 +1560,26 @@ function getPublishedGalleries() {
     FROM galleries
     ORDER BY published_at DESC, id DESC
   `).all();
+}
+
+function getGalleriesForPublic() {
+  const galleries = db.prepare(`
+    SELECT g.*,
+      (SELECT COUNT(*) FROM gallery_photos WHERE gallery_id = g.id) AS photo_count
+    FROM galleries g
+    ORDER BY g.published_at DESC, g.id DESC
+  `).all().map(withGalleryDefaults);
+  const previewPhotos = db.prepare(`
+    SELECT id, image_url, description, taken_at, position
+    FROM gallery_photos
+    WHERE gallery_id = ?
+    ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, position ASC, id ASC
+    LIMIT 3
+  `);
+  for (const gallery of galleries) {
+    gallery.preview_photos = previewPhotos.all(gallery.id, Number(gallery.cover_photo_id) || -1);
+  }
+  return galleries;
 }
 
 function getGalleryBySlug(slug) {
@@ -1901,6 +1957,7 @@ function isNavigationActive(url, currentPath) {
   const requestPath = internalNavigationPath(currentPath);
   if (!navigationPath || !requestPath) return false;
   if (navigationPath === requestPath) return true;
+  if (navigationPath === '/gallery' && requestPath.startsWith('/gallery/')) return true;
 
   const navigationContent = navigationPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);
   const requestContent = requestPath.match(/^\/(post|page)\/[^/]+\/([^/]+)$/);

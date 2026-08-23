@@ -98,7 +98,9 @@ BLOG_LOCALES=zh,en,ja,fr
 
 关联文章通过后台文本框每行填写一个 URL，支持 `/` 开头的站内地址和完整 HTTP/HTTPS 地址，最多 20 个。服务端会校验、去重并保存到 `settings_json.relatedArticles`；前台在 Gallery 底部展示，全部使用新标签页打开。
 
-公开详情页会按照保存的皮肤和参数渲染照片，内容宽度与站点 Logo 和 Post 的 `1200px` 基线一致，包含 Gallery 元数据、照片描述和拍摄时间、响应式布局、键盘可操作的渐隐切换、图片放大浏览，以及与 Post 相同的 Logo + Copyright 签名。公开 Gallery 也会加入 XML Sitemap。
+公开列表地址为 `/gallery`，每个 Gallery 自动以封面优先、照片排序靠前的规则选择最多三张预览图，并从卡片进入详情页。列表和详情页都与站点 Logo、Post 的 `1200px` 基线对齐；列表采用响应式双列留白布局，不使用渐变或厚重装饰。
+
+公开详情页会按照保存的皮肤和参数渲染照片，包含 Gallery 元数据、照片描述和拍摄时间、响应式布局、键盘可操作的渐隐切换、图片放大浏览，以及与 Post 相同的 Logo + Copyright 签名。Gallery 列表与公开详情都会加入 XML Sitemap。
 
 旧数据库启动新版应用时会自动增加 `galleries.slug`，为旧记录生成 `gallery-记录ID`，并创建唯一索引。需要手动升级时，先用 `PRAGMA table_info(galleries);` 确认尚无 `slug` 字段，再执行：
 

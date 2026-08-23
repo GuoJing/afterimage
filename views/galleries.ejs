@@ -1,0 +1,46 @@
+<%- include('partials/head', { pageTitle: 'Gallery', description }) %>
+<main class="gallery-index-main">
+  <section class="gallery-index" aria-labelledby="gallery-index-title">
+    <header class="gallery-index-header">
+      <p class="eyebrow">COLLECTIONS</p>
+      <h1 id="gallery-index-title">Gallery</h1>
+      <p><%= galleries.length %> <%= galleries.length === 1 ? 'collection' : 'collections' %></p>
+    </header>
+
+    <% if (!galleries.length) { %>
+      <div class="gallery-index-empty">
+        <span aria-hidden="true">◇</span>
+        <p>No galleries yet.</p>
+      </div>
+    <% } else { %>
+      <div class="gallery-index-grid">
+        <% galleries.forEach(gallery => { const previewCount = gallery.preview_photos.length; %>
+          <a class="gallery-index-card" href="/gallery/<%= encodeURIComponent(gallery.slug) %>" aria-label="<%= gallery.name %>, <%= gallery.photo_count %> photos">
+            <div class="gallery-index-preview gallery-index-preview-<%= previewCount %>">
+              <% if (previewCount) { %>
+                <% gallery.preview_photos.forEach((photo, index) => { %>
+                  <img src="<%= photo.image_url %>" alt="<%= photo.description || `${gallery.name} ${index + 1}` %>" loading="<%= index === 0 ? 'eager' : 'lazy' %>">
+                <% }) %>
+              <% } else { %>
+                <span>EMPTY GALLERY</span>
+              <% } %>
+            </div>
+            <div class="gallery-index-card-body">
+              <div>
+                <h2><%= gallery.name %></h2>
+                <p class="gallery-index-meta">
+                  <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
+                  <span><%= gallery.author %></span>
+                  <span><%= gallery.photo_count %> photos</span>
+                </p>
+              </div>
+              <span class="gallery-index-arrow" aria-hidden="true">↗</span>
+            </div>
+            <% if (gallery.description) { %><p class="gallery-index-description"><%= gallery.description %></p><% } %>
+          </a>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+</main>
+<%- include('partials/footer') %>
