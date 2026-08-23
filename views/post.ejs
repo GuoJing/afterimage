@@ -11,8 +11,8 @@
     </div>
     <div class="post-meta">
       <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
-      <span><span class="post-meta-label">作者</span><%= post.author %></span>
-      <% if (post.category) { %><span><span class="post-meta-label">分类</span><%= post.category %></span><% } %>
+      <span><%= post.author %></span>
+      <% if (post.category) { %><span><%= post.category %></span><% } %>
     </div>
     <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
     <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
