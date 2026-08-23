@@ -56,6 +56,8 @@ db.exec(`
     slug TEXT NOT NULL UNIQUE,
     status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
     published_at TEXT,
+    author TEXT NOT NULL DEFAULT 'GuoJing',
+    category TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -98,6 +100,9 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+const postColumns = new Set(db.prepare('PRAGMA table_info(posts)').all().map(column => column.name));
+if (!postColumns.has('author')) db.exec("ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT 'GuoJing'");
+if (!postColumns.has('category')) db.exec("ALTER TABLE posts ADD COLUMN category TEXT NOT NULL DEFAULT ''");
 
 const markdownRenderer = new Renderer();
 markdownRenderer.paragraph = function renderParagraph(token) {
@@ -275,7 +280,7 @@ app.get('/post/:locale/:slug', (req, res) => {
     dateModified: sqliteDateToIso(post.updated_at),
     inLanguage: post.rendered_locale,
     mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
-    author: { '@type': 'Person', name: blog.author },
+    author: { '@type': 'Person', name: post.author },
     publisher: publisherStructuredData(),
   };
   if (post.status !== 'published') {
@@ -953,6 +958,8 @@ function renderPostMarkdown(post, canonicalUrl) {
     ...(summary ? [`> ${summary.replace(/\s*\n\s*/g, ' ')}`, ''] : []),
     `- Language: ${post.rendered_locale || post.locale}`,
     `- Published: ${formatDate(post.published_at)}`,
+    `- Author: ${post.author || 'GuoJing'}`,
+    ...(post.category ? [`- Category: ${post.category}`] : []),
     `- Canonical: ${canonicalUrl}`,
     '',
     String(post.body || '').trim(),
@@ -1125,7 +1132,7 @@ function getPublishedPostsByExactLocale(locale) {
     JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
     WHERE p.status = 'published'
     ORDER BY p.published_at DESC, p.id DESC
-  `).all(locale);
+  `).all(locale).map(withPostMetadata);
 }
 
 function archiveExcerpt(post, maxLength = 260) {
@@ -1166,13 +1173,21 @@ function getPageBySlug(slug, locale) {
 }
 
 function withLocales(post) {
+  withPostMetadata(post);
   post.availableLocales = db.prepare('SELECT locale FROM post_translations WHERE post_id = ? ORDER BY locale').all(post.id).map(row => row.locale);
+  return post;
+}
+
+function withPostMetadata(post) {
+  post.author = String(post.author || '').trim() || 'GuoJing';
+  post.category = String(post.category || '').trim();
   return post;
 }
 
 function getPostForAdmin(id) {
   const base = db.prepare('SELECT * FROM posts WHERE id = ?').get(id);
   if (!base) return null;
+  withPostMetadata(base);
   base.translationList = db.prepare(`
     SELECT locale, title, summary, body FROM post_translations
     WHERE post_id = ? ORDER BY CASE WHEN locale = ? THEN 0 ELSE 1 END, locale
@@ -1202,6 +1217,8 @@ function emptyPost() {
     slug: '',
     status: 'draft',
     published_at: new Date().toISOString().slice(0, 16),
+    author: 'GuoJing',
+    category: '',
     translationList: [{ locale: defaultLocale, title: '', summary: '', body: '' }],
   };
 }
@@ -1218,7 +1235,14 @@ function postFromBody(body) {
     body: String(bodies[index] || ''),
   }));
   if (!translationList.length) translationList.push({ locale: defaultLocale, title: '', summary: '', body: '' });
-  return { slug: body.slug || '', status: body.status || 'draft', published_at: body.published_at || '', translationList };
+  return {
+    slug: body.slug || '',
+    status: body.status || 'draft',
+    published_at: body.published_at || '',
+    author: String(body.author || '').trim() || 'GuoJing',
+    category: String(body.category || '').trim(),
+    translationList,
+  };
 }
 
 function emptyPage() {
@@ -1239,11 +1263,15 @@ const persistPost = db.transaction((id, data) => {
   if (!/^[a-z0-9][a-z0-9_-]*$/i.test(slug)) throw new Error('INVALID_SLUG');
   const status = data.status === 'published' ? 'published' : 'draft';
   const publishedAt = data.published_at ? new Date(data.published_at).toISOString() : new Date().toISOString();
+  const author = String(data.author || '').trim() || 'GuoJing';
+  const category = String(data.category || '').trim();
+  if (author.length > 100) throw new Error('INVALID_AUTHOR');
+  if (category.length > 100) throw new Error('INVALID_CATEGORY');
   let postId = id;
   if (id) {
-    db.prepare('UPDATE posts SET slug = ?, status = ?, published_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(slug, status, publishedAt, id);
+    db.prepare('UPDATE posts SET slug = ?, status = ?, published_at = ?, author = ?, category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(slug, status, publishedAt, author, category, id);
   } else {
-    postId = Number(db.prepare('INSERT INTO posts (slug, status, published_at) VALUES (?, ?, ?)').run(slug, status, publishedAt).lastInsertRowid);
+    postId = Number(db.prepare('INSERT INTO posts (slug, status, published_at, author, category) VALUES (?, ?, ?, ?, ?)').run(slug, status, publishedAt, author, category).lastInsertRowid);
   }
   const translations = parseSubmittedTranslations(data);
   db.prepare('DELETE FROM post_translations WHERE post_id = ?').run(postId);
@@ -1370,6 +1398,8 @@ function safeEqual(a, b) {
 function friendlyError(error) {
   if (String(error.message).includes('UNIQUE constraint failed')) return '这个 URL 已经被使用';
   if (error.message === 'INVALID_SLUG') return 'URL 只能包含英文字母、数字、连字符和下划线';
+  if (error.message === 'INVALID_AUTHOR') return '作者名称不能超过 100 个字符';
+  if (error.message === 'INVALID_CATEGORY') return '分类名称不能超过 100 个字符';
   if (error.message === 'INVALID_LOCALE') return '请选择有效的语言代码';
   if (error.message === 'DUPLICATE_LOCALE') return '同一种语言只能添加一次';
   if (error.message === 'NO_TRANSLATIONS') return '请至少添加一种语言的内容';

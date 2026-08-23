@@ -133,6 +133,13 @@ button, input, textarea, select { font: inherit; }
 .published.static { display: block; margin-top: 2em; }
 .content-date { display: block; margin-top: 8px; color: var(--mute); font: 400 12px/1.4 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .content-date:hover { color: var(--light); }
+.post-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 0; margin-top: 10px; color: var(--mute); font: 400 12px/1.5 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: .015em; }
+.post-meta > * { display: inline-flex; align-items: center; }
+.post-meta > * + *::before { content: "·"; margin: 0 9px; color: var(--light); opacity: .55; }
+.post-meta a { color: inherit; text-decoration: none; }
+.post-meta a:hover { color: var(--strong); text-decoration: underline; }
+.post-meta-label { margin-right: 4px; color: var(--light); }
+.post-meta.compact { margin-top: 8px; }
 .fallback-note { margin: 1.4em 0 0; padding: 10px 12px; border-radius: 5px; color: var(--light); background: var(--bg-soft); font-size: 14px; }
 .post-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .post-title-row h1 { flex: 1; }
