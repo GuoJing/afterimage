@@ -413,13 +413,13 @@ app.get('/page/:locale/:slug', (req, res) => {
 app.get('/galleries', (req, res) => {
   const galleries = getGalleriesForPublic();
   const canonicalUrl = absoluteUrl('/galleries');
-  const description = `Browse ${blog.title} photo galleries.`;
+  const description = `Browse ${blog.title} photo collections.`;
   const previewPhoto = galleries.find(gallery => gallery.preview_photos.length)?.preview_photos[0];
   const image = previewPhoto?.image_url ? absoluteUrl(previewPhoto.image_url) : absoluteUrl('/apple-touch-icon.png');
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name: `Gallery — ${blog.title}`,
+    name: `Collections — ${blog.title}`,
     description,
     url: canonicalUrl,
     image,
