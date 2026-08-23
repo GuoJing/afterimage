@@ -5,8 +5,9 @@
       <h1><a href="<%= postUrl(featured.slug) %>"><%= featured.title %></a></h1>
       <div class="post-meta compact">
         <a href="<%= postUrl(featured.slug) %>"><time datetime="<%= featured.published_at %>"><%= formatDate(featured.published_at) %></time></a>
+        <span class="meta-separator" aria-hidden="true">·</span>
         <a href="/page/<%= featured.rendered_locale %>/about"><%= featured.author %></a>
-        <% if (featured.category) { %><a href="<%= topicUrl(featured.category) %>"><%= featured.category %></a><% } %>
+        <% if (featured.category) { %><span class="meta-separator" aria-hidden="true">·</span><a href="<%= topicUrl(featured.category) %>"><%= featured.category %></a><% } %>
       </div>
       <div class="prose"><%- renderMarkdown(featured.body) %></div>
     </article>
@@ -16,8 +17,9 @@
         <h2><a href="<%= postUrl(post.slug) %>"><%= post.title %></a></h2>
         <div class="post-meta compact">
           <a href="<%= postUrl(post.slug) %>"><time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time></a>
+          <span class="meta-separator" aria-hidden="true">·</span>
           <a href="/page/<%= post.rendered_locale %>/about"><%= post.author %></a>
-          <% if (post.category) { %><a href="<%= topicUrl(post.category) %>"><%= post.category %></a><% } %>
+          <% if (post.category) { %><span class="meta-separator" aria-hidden="true">·</span><a href="<%= topicUrl(post.category) %>"><%= post.category %></a><% } %>
         </div>
         <p><%= post.summary || post.body.replace(/[#_*`>\[\]()!-]/g, '').slice(0, 180) %></p>
       </article>

@@ -10,7 +10,9 @@
       <h1><%= gallery.name %></h1>
       <div class="gallery-detail-meta">
         <time datetime="<%= gallery.published_at %>"><%= formatDate(gallery.published_at) %></time>
+        <span class="meta-separator" aria-hidden="true">·</span>
         <a href="/page/<%= locale %>/about" rel="author"><%= gallery.author %></a>
+        <span class="meta-separator" aria-hidden="true">·</span>
         <span><%= gallery.photos.length %> photos</span>
       </div>
       <% if (gallery.description) { %><p class="gallery-detail-description"><%= gallery.description %></p><% } %>

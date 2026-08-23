@@ -11,8 +11,9 @@
     </div>
     <div class="post-meta">
       <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
+      <span class="meta-separator" aria-hidden="true">·</span>
       <a href="<%= authorUrl %>" rel="author"><%= post.author %></a>
-      <% if (post.category) { %><a href="<%= topicUrl(post.category) %>"><%= post.category %></a><% } %>
+      <% if (post.category) { %><span class="meta-separator" aria-hidden="true">·</span><a href="<%= topicUrl(post.category) %>"><%= post.category %></a><% } %>
     </div>
     <% if (post.status === 'draft') { %><p class="draft-preview-note">管理员草稿预览</p><% } %>
     <% if (post.rendered_locale !== locale) { %><p class="fallback-note">此文章暂时没有 <%= locale.toUpperCase() %> 版本，正在显示默认语言。</p><% } %>
