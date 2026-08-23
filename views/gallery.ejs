@@ -67,7 +67,16 @@
       </section>
     <% } %>
 
-    <footer class="gallery-detail-footer"><span><%= gallery.name %></span><span>Copyright by <%= gallery.author %></span></footer>
+    <% if (gallery.theme_settings.relatedArticles.length) { %>
+      <section class="gallery-related-articles" aria-labelledby="gallery-related-title">
+        <p class="eyebrow" id="gallery-related-title">RELATED</p>
+        <ul><% gallery.theme_settings.relatedArticles.forEach(url => { %><li><a href="<%= url %>" target="_blank" rel="noopener noreferrer"><%= url %></a></li><% }) %></ul>
+      </section>
+    <% } %>
+    <footer class="article-signature gallery-signature">
+      <img src="/apple-touch-icon.png" width="42" height="42" alt="<%= blog.title %>">
+      <p>Copyright by <%= gallery.author %></p>
+    </footer>
   </article>
 </main>
 <%- include('partials/footer') %>

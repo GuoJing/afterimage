@@ -1558,6 +1558,7 @@ function withGalleryDefaults(gallery) {
   gallery.description = String(gallery.description || '').trim();
   gallery.author = String(gallery.author || '').trim() || 'GuoJing';
   gallery.theme_settings = parseStoredGallerySettings(gallery.settings_json);
+  gallery.related_articles_text = gallery.theme_settings.relatedArticles.join('\n');
   gallery.settings_json = JSON.stringify(gallery.theme_settings);
   return gallery;
 }
@@ -1571,6 +1572,7 @@ function emptyGallery() {
     published_at: currentLocalDateTime(),
     cover_photo_id: null,
     theme_settings: defaultGallerySettings(),
+    related_articles_text: '',
     settings_json: JSON.stringify(defaultGallerySettings()),
     photos: [],
   };
@@ -1583,6 +1585,7 @@ function currentLocalDateTime() {
 
 function galleryFromBody(body, persisted = null) {
   const themeSettings = gallerySettingsFromBody(body, false);
+  themeSettings.relatedArticles = normalizeGalleryRelatedUrls(body.related_urls, false);
   const gallery = {
     ...(persisted || emptyGallery()),
     slug: String(body.slug || ''),
@@ -1592,6 +1595,7 @@ function galleryFromBody(body, persisted = null) {
     published_at: String(body.published_at || ''),
     cover_photo_id: body.cover_photo_id ? Number(body.cover_photo_id) : null,
     theme_settings: themeSettings,
+    related_articles_text: String(body.related_urls || ''),
     settings_json: JSON.stringify(themeSettings),
   };
   if (persisted?.photos) {
@@ -1661,7 +1665,7 @@ function saveGallery(id, data) {
 }
 
 function defaultGallerySettings(theme = 'masonry') {
-  return { theme, options: { ...galleryThemeDefaults[theme] } };
+  return { theme, options: { ...galleryThemeDefaults[theme] }, relatedArticles: [] };
 }
 
 function parseStoredGallerySettings(value) {
@@ -1673,11 +1677,15 @@ function parseStoredGallerySettings(value) {
 }
 
 function normalizeGallerySettingsJson(data) {
-  if (data.gallery_theme !== undefined) return JSON.stringify(gallerySettingsFromBody(data, true));
+  if (data.gallery_theme !== undefined) {
+    const settings = gallerySettingsFromBody(data, true);
+    settings.relatedArticles = normalizeGalleryRelatedUrls(data.related_urls, true);
+    return JSON.stringify(settings);
+  }
   try {
     return JSON.stringify(normalizeGallerySettingsObject(JSON.parse(String(data.settings_json || '{}')), true));
   } catch (error) {
-    if (error.message?.startsWith('INVALID_GALLERY_THEME')) throw error;
+    if (error.message?.startsWith('INVALID_GALLERY_')) throw error;
     throw new Error('INVALID_GALLERY_THEME');
   }
 }
@@ -1733,7 +1741,40 @@ function normalizeGallerySettingsObject(settings, strict) {
     const formKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     data[`${prefix}${formKey}`] = typeof value === 'boolean' ? (value ? '1' : undefined) : value;
   }
-  return gallerySettingsFromBody(data, strict);
+  const normalized = gallerySettingsFromBody(data, strict);
+  normalized.relatedArticles = normalizeGalleryRelatedUrls(settings.relatedArticles, strict);
+  return normalized;
+}
+
+function normalizeGalleryRelatedUrls(value, strict) {
+  const values = Array.isArray(value) ? value : String(value || '').split(/\r?\n/);
+  const urls = [];
+  for (const item of values) {
+    const url = normalizeGalleryRelatedUrl(item);
+    if (!url) {
+      if (strict && String(item || '').trim()) throw new Error('INVALID_GALLERY_RELATED_URLS');
+      continue;
+    }
+    if (!urls.includes(url)) urls.push(url);
+    if (urls.length > 20) {
+      if (strict) throw new Error('INVALID_GALLERY_RELATED_URLS');
+      return urls.slice(0, 20);
+    }
+  }
+  return urls;
+}
+
+function normalizeGalleryRelatedUrl(value) {
+  const url = String(value || '').trim();
+  if (!url || url.length > 2048 || /[\u0000-\u001F\u007F]/.test(url)) return null;
+  if (url.startsWith('/') && !url.startsWith('//')) return url;
+  try {
+    const parsed = new URL(url);
+    if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) return url;
+  } catch {
+    // Invalid and unsafe URLs use the shared validation message below.
+  }
+  return null;
 }
 
 function galleryInteger(value, fallback, min, max, strict) {
@@ -1905,6 +1946,7 @@ function friendlyError(error) {
   if (error.message === 'INVALID_GALLERY_DESCRIPTION') return 'Gallery 描述不能超过 5000 个字符';
   if (error.message === 'INVALID_GALLERY_THEME') return '请选择有效的 Gallery 皮肤';
   if (error.message === 'INVALID_GALLERY_THEME_OPTIONS') return '皮肤参数超出允许范围，请检查后重试';
+  if (error.message === 'INVALID_GALLERY_RELATED_URLS') return '关联文章每行填写一个站内 / 开头地址或完整 HTTP/HTTPS 地址，最多 20 个';
   if (error.message === 'INVALID_GALLERY_DATE') return '请输入有效的日期和时间';
   if (error.message === 'INVALID_GALLERY_PHOTO') return 'Gallery 中包含无效的照片，请刷新页面后重试';
   if (error.message === 'INVALID_PHOTO_DESCRIPTION') return '单张照片描述不能超过 1000 个字符';

@@ -18,6 +18,7 @@
           <label>作者<input name="author" value="<%= gallery.author || 'GuoJing' %>" maxlength="100" placeholder="GuoJing"></label>
           <label>发布时间<input name="published_at" type="datetime-local" value="<%= datetimeLocalValue(gallery.published_at) %>" required></label>
           <label class="gallery-description-field">描述<textarea name="description" rows="4" maxlength="5000" placeholder="简要介绍这个 Gallery"><%= gallery.description || '' %></textarea></label>
+          <label class="gallery-related-field">关联文章 URL<textarea name="related_urls" rows="4" placeholder="/post/zh/example&#10;https://example.com/article"><%= gallery.related_articles_text || '' %></textarea><small>每行一个 URL，支持 / 开头的站内地址或完整 HTTP/HTTPS 地址，最多 20 个；前台统一在新标签页打开。</small></label>
         </div>
       </section>
 

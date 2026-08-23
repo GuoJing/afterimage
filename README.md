@@ -90,13 +90,15 @@ BLOG_LOCALES=zh,en,ja,fr
 
 ## Gallery 后台
 
-后台“Gallery 管理”支持先创建空 Gallery，再进入编辑页上传和整理照片。Gallery 包含唯一 URL 后缀、名称、发布时间、描述、作者、单张封面照片和详情页皮肤；作者默认为 `GuoJing`。公开详情地址为 `/gallery/:slug`，例如 `/gallery/tokyo-2026`。
+后台“Gallery 管理”支持先创建空 Gallery，再进入编辑页上传和整理照片。Gallery 包含唯一 URL 后缀、名称、发布时间、描述、作者、单张封面照片、关联文章 URL 和详情页皮肤；作者默认为 `GuoJing`。公开详情地址为 `/gallery/:slug`，例如 `/gallery/tokyo-2026`。
 
 详情页皮肤提供四种预设，并将选择和参数保存到现有 `settings_json`：瀑布流可设置桌面/平板列数、间距和照片描述；平铺网格可设置列数、间距、统一画幅及图片适配；渐隐画廊可设置自动播放、停留/渐变时间、图片适配和缩略图导航；智能拼接可设置目标/最大行高、间距、末行对齐和照片描述。后台不再要求直接编辑 JSON。旧 Gallery 的空设置会自动使用默认瀑布流，无需数据库迁移。
 
 照片复用现有 `IMAGE_STORAGE` 配置上传到本地目录或 DigitalOcean Spaces。后台以固定 `200px` 高度的缩略图网格展示照片，可以填写每张照片的描述和拍摄时间、拖拽调整顺序、单选封面或取消封面。上传与移除立即生效，元数据、封面和排序通过“保存 Gallery”统一保存。
 
-公开详情页会按照保存的皮肤和参数渲染照片，包含 Gallery 元数据、照片描述和拍摄时间、响应式布局、键盘可操作的渐隐切换以及图片放大浏览。公开 Gallery 也会加入 XML Sitemap。
+关联文章通过后台文本框每行填写一个 URL，支持 `/` 开头的站内地址和完整 HTTP/HTTPS 地址，最多 20 个。服务端会校验、去重并保存到 `settings_json.relatedArticles`；前台在 Gallery 底部展示，全部使用新标签页打开。
+
+公开详情页会按照保存的皮肤和参数渲染照片，内容宽度与站点 Logo 和 Post 的 `1200px` 基线一致，包含 Gallery 元数据、照片描述和拍摄时间、响应式布局、键盘可操作的渐隐切换、图片放大浏览，以及与 Post 相同的 Logo + Copyright 签名。公开 Gallery 也会加入 XML Sitemap。
 
 旧数据库启动新版应用时会自动增加 `galleries.slug`，为旧记录生成 `gallery-记录ID`，并创建唯一索引。需要手动升级时，先用 `PRAGMA table_info(galleries);` 确认尚无 `slug` 字段，再执行：
 

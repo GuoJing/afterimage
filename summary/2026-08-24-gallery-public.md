@@ -23,5 +23,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS galleries_slug_unique ON galleries(slug);
 - `justified` 在图片加载后读取真实宽高比，根据目标行高和容器宽度计算每行图片尺寸，并支持末行左对齐、居中或填满。
 - 手机端瀑布流、网格和智能拼接均回退为单列，渐隐画廊缩小控件和缩略图。
 - 所有照片支持键盘访问和全屏放大浏览；页面包含封面 Open Graph、`ImageGallery` JSON-LD、canonical URL，并加入 Sitemap。
+- Gallery 内容区域限制为 `1200px` 并居中，与页头 Logo 和 Post 的内容边界对齐。
+- 后台支持每行填写一个关联文章 URL；相对和绝对 HTTP/HTTPS 地址保存到 `settings_json.relatedArticles`，前台底部全部以新标签页打开。
+- 关联文章列表之后使用与 Post 相同的 Logo 和 `Copyright by 作者` 签名。
 
 当前只实现 Gallery 详情页，没有新增 Gallery 聚合列表页。
