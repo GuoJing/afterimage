@@ -99,6 +99,32 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS galleries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT 'GuoJing',
+    published_at TEXT NOT NULL,
+    cover_photo_id INTEGER,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS gallery_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gallery_id INTEGER NOT NULL REFERENCES galleries(id) ON DELETE CASCADE,
+    image_url TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    taken_at TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS gallery_photos_gallery_position
+  ON gallery_photos(gallery_id, position, id);
 `);
 const postColumns = new Set(db.prepare('PRAGMA table_info(posts)').all().map(column => column.name));
 if (!postColumns.has('author')) db.exec("ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT 'GuoJing'");
@@ -169,6 +195,7 @@ app.use((req, res, next) => {
   res.locals.imageMaxSizeMb = imageMaxSizeMb;
   res.locals.imageMaxBytes = imageMaxBytes;
   res.locals.serializeJsonLd = serializeJsonLd;
+  res.locals.datetimeLocalValue = datetimeLocalValue;
   setResponseLocale(res, locale);
   next();
 });
@@ -541,6 +568,100 @@ app.post(`${adminBasePath}/pages/:id/delete`, requireAdmin, requireCsrf, (req, r
   res.redirect(`${adminBasePath}/pages`);
 });
 
+app.get(`${adminBasePath}/galleries`, requireAdmin, (req, res) => {
+  res.render('admin/galleries', { galleries: getGalleriesForAdmin(), csrf: req.session.csrf });
+});
+
+app.get(`${adminBasePath}/galleries/new`, requireAdmin, (req, res) => {
+  res.render('admin/gallery-form', { gallery: emptyGallery(), error: null, csrf: req.session.csrf, isNew: true });
+});
+
+app.post(`${adminBasePath}/galleries`, requireAdmin, requireCsrf, (req, res) => {
+  try {
+    const galleryId = saveGallery(null, req.body);
+    res.redirect(`${adminBasePath}/galleries/${galleryId}/edit?saved=1`);
+  } catch (error) {
+    res.status(400).render('admin/gallery-form', {
+      gallery: galleryFromBody(req.body),
+      error: friendlyError(error),
+      csrf: req.session.csrf,
+      isNew: true,
+    });
+  }
+});
+
+app.get(`${adminBasePath}/galleries/:id/edit`, requireAdmin, (req, res) => {
+  const gallery = getGalleryForAdmin(Number(req.params.id));
+  if (!gallery) return res.status(404).render('not-found');
+  res.render('admin/gallery-form', {
+    gallery,
+    error: null,
+    csrf: req.session.csrf,
+    isNew: false,
+    saved: req.query.saved === '1',
+  });
+});
+
+app.post(`${adminBasePath}/galleries/:id`, requireAdmin, requireCsrf, (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    saveGallery(id, req.body);
+    res.redirect(`${adminBasePath}/galleries/${id}/edit?saved=1`);
+  } catch (error) {
+    const persisted = getGalleryForAdmin(id);
+    if (!persisted) return res.status(404).render('not-found');
+    res.status(400).render('admin/gallery-form', {
+      gallery: galleryFromBody(req.body, persisted),
+      error: friendlyError(error),
+      csrf: req.session.csrf,
+      isNew: false,
+    });
+  }
+});
+
+app.post(`${adminBasePath}/galleries/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
+  db.prepare('DELETE FROM galleries WHERE id = ?').run(Number(req.params.id));
+  res.redirect(`${adminBasePath}/galleries`);
+});
+
+app.post(
+  `${adminBasePath}/galleries/:id/photos`,
+  requireAdmin,
+  requireCsrf,
+  parseImageBody,
+  async (req, res) => {
+    const galleryId = Number(req.params.id);
+    if (!db.prepare('SELECT id FROM galleries WHERE id = ?').get(galleryId)) {
+      return res.status(404).json({ error: 'Gallery 不存在。' });
+    }
+    const image = detectImageType(req.body);
+    if (!image) return res.status(415).json({ error: '仅支持 JPEG、PNG、WebP、GIF 或 AVIF 图片。' });
+
+    try {
+      const imageUrl = await storeImage(req.body, image);
+      const position = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM gallery_photos WHERE gallery_id = ?').get(galleryId).next_position;
+      const photoId = Number(db.prepare(`
+        INSERT INTO gallery_photos (gallery_id, image_url, position) VALUES (?, ?, ?)
+      `).run(galleryId, imageUrl, position).lastInsertRowid);
+      res.status(201).json({ id: photoId, imageUrl, description: '', takenAt: '', position });
+    } catch (error) {
+      console.error('Gallery 图片上传失败：', error);
+      res.status(502).json({ error: '图片存储失败，请稍后重试。' });
+    }
+  },
+);
+
+app.post(`${adminBasePath}/galleries/:galleryId/photos/:photoId/delete`, requireAdmin, requireCsrf, (req, res) => {
+  const galleryId = Number(req.params.galleryId);
+  const photoId = Number(req.params.photoId);
+  const result = db.transaction(() => {
+    db.prepare('UPDATE galleries SET cover_photo_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND cover_photo_id = ?').run(galleryId, photoId);
+    return db.prepare('DELETE FROM gallery_photos WHERE id = ? AND gallery_id = ?').run(photoId, galleryId);
+  })();
+  if (!result.changes) return res.status(404).json({ error: '照片不存在。' });
+  res.json({ ok: true });
+});
+
 app.get(`${adminBasePath}/navigation`, requireAdmin, (req, res) => {
   res.render('admin/navigation', {
     items: getNavigationItems(),
@@ -818,6 +939,13 @@ function setResponseLocale(res, locale) {
 function formatDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function datetimeLocalValue(value) {
+  const source = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(source) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(source)) return source.slice(0, 16);
+  const date = new Date(source);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 16);
 }
 
 function postUrl(locale, slug) {
@@ -1314,6 +1442,165 @@ function savePage(id, data) {
   return persistPage(id, data);
 }
 
+function getGalleriesForAdmin() {
+  return db.prepare(`
+    SELECT g.*, cover.image_url AS cover_image_url,
+      (SELECT COUNT(*) FROM gallery_photos WHERE gallery_id = g.id) AS photo_count
+    FROM galleries g
+    LEFT JOIN gallery_photos cover ON cover.id = g.cover_photo_id AND cover.gallery_id = g.id
+    ORDER BY g.published_at DESC, g.id DESC
+  `).all().map(withGalleryDefaults);
+}
+
+function getGalleryForAdmin(id) {
+  const gallery = db.prepare('SELECT * FROM galleries WHERE id = ?').get(id);
+  if (!gallery) return null;
+  withGalleryDefaults(gallery);
+  gallery.photos = db.prepare(`
+    SELECT id, image_url, description, taken_at, position
+    FROM gallery_photos
+    WHERE gallery_id = ?
+    ORDER BY position ASC, id ASC
+  `).all(id);
+  return gallery;
+}
+
+function withGalleryDefaults(gallery) {
+  gallery.name = String(gallery.name || '').trim();
+  gallery.description = String(gallery.description || '').trim();
+  gallery.author = String(gallery.author || '').trim() || 'GuoJing';
+  gallery.settings_json = formatSettingsJson(gallery.settings_json);
+  return gallery;
+}
+
+function emptyGallery() {
+  return {
+    name: '',
+    description: '',
+    author: 'GuoJing',
+    published_at: currentLocalDateTime(),
+    cover_photo_id: null,
+    settings_json: '{}',
+    photos: [],
+  };
+}
+
+function currentLocalDateTime() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function galleryFromBody(body, persisted = null) {
+  const gallery = {
+    ...(persisted || emptyGallery()),
+    name: String(body.name || ''),
+    description: String(body.description || ''),
+    author: String(body.author || '').trim() || 'GuoJing',
+    published_at: String(body.published_at || ''),
+    cover_photo_id: body.cover_photo_id ? Number(body.cover_photo_id) : null,
+    settings_json: String(body.settings_json || '{}'),
+  };
+  if (persisted?.photos) {
+    const descriptions = submittedPhotoValues(body, 'photo_description');
+    const takenTimes = submittedPhotoValues(body, 'photo_taken_at');
+    gallery.photos = persisted.photos.map(photo => ({
+      ...photo,
+      description: descriptions.get(photo.id) ?? photo.description,
+      taken_at: takenTimes.get(photo.id) ?? photo.taken_at,
+    }));
+  }
+  return gallery;
+}
+
+const persistGallery = db.transaction((id, data) => {
+  const name = String(data.name || '').trim();
+  const description = String(data.description || '').trim();
+  const author = String(data.author || '').trim() || 'GuoJing';
+  const publishedAt = normalizeOptionalDate(data.published_at, false);
+  const settingsJson = normalizeSettingsJson(data.settings_json);
+  if (!name || name.length > 160) throw new Error('INVALID_GALLERY_NAME');
+  if (description.length > 5000) throw new Error('INVALID_GALLERY_DESCRIPTION');
+  if (author.length > 100) throw new Error('INVALID_AUTHOR');
+
+  let galleryId = id;
+  if (galleryId) {
+    const result = db.prepare(`
+      UPDATE galleries
+      SET name = ?, description = ?, author = ?, published_at = ?, settings_json = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(name, description, author, publishedAt, settingsJson, galleryId);
+    if (!result.changes) throw new Error('GALLERY_NOT_FOUND');
+  } else {
+    galleryId = Number(db.prepare(`
+      INSERT INTO galleries (name, description, author, published_at, settings_json)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, description, author, publishedAt, settingsJson).lastInsertRowid);
+  }
+
+  const photoIds = arrayValue(data.photo_id).map(Number).filter(Number.isInteger);
+  const descriptions = arrayValue(data.photo_description);
+  const takenTimes = arrayValue(data.photo_taken_at);
+  const existingIds = new Set(db.prepare('SELECT id FROM gallery_photos WHERE gallery_id = ?').all(galleryId).map(row => row.id));
+  const updatePhoto = db.prepare(`
+    UPDATE gallery_photos
+    SET description = ?, taken_at = ?, position = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND gallery_id = ?
+  `);
+  photoIds.forEach((photoId, index) => {
+    if (!existingIds.has(photoId)) throw new Error('INVALID_GALLERY_PHOTO');
+    const photoDescription = String(descriptions[index] || '').trim();
+    if (photoDescription.length > 1000) throw new Error('INVALID_PHOTO_DESCRIPTION');
+    const takenAt = normalizeOptionalDate(takenTimes[index], true);
+    updatePhoto.run(photoDescription, takenAt, index, photoId, galleryId);
+  });
+
+  const coverPhotoId = data.cover_photo_id ? Number(data.cover_photo_id) : null;
+  if (coverPhotoId !== null && !existingIds.has(coverPhotoId)) throw new Error('INVALID_GALLERY_COVER');
+  db.prepare('UPDATE galleries SET cover_photo_id = ? WHERE id = ?').run(coverPhotoId, galleryId);
+  return galleryId;
+});
+
+function saveGallery(id, data) {
+  return persistGallery(id, data);
+}
+
+function normalizeSettingsJson(value) {
+  const source = String(value || '').trim() || '{}';
+  let settings;
+  try {
+    settings = JSON.parse(source);
+  } catch {
+    throw new Error('INVALID_GALLERY_SETTINGS');
+  }
+  if (!settings || Array.isArray(settings) || typeof settings !== 'object') throw new Error('INVALID_GALLERY_SETTINGS');
+  return JSON.stringify(settings);
+}
+
+function formatSettingsJson(value) {
+  try {
+    const settings = JSON.parse(String(value || '{}'));
+    return JSON.stringify(settings, null, 2);
+  } catch {
+    return '{}';
+  }
+}
+
+function normalizeOptionalDate(value, allowEmpty) {
+  const source = String(value || '').trim();
+  if (!source && allowEmpty) return null;
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) throw new Error('INVALID_GALLERY_DATE');
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(source) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(source)
+    ? source.slice(0, 16)
+    : date.toISOString();
+}
+
+function submittedPhotoValues(body, field) {
+  const ids = arrayValue(body.photo_id).map(Number);
+  const values = arrayValue(body[field]);
+  return new Map(ids.map((id, index) => [id, String(values[index] || '')]));
+}
+
 function getNavigationItems() {
   return db.prepare(`
     SELECT id, label, url, target, position
@@ -1424,6 +1711,14 @@ function friendlyError(error) {
   if (error.message === 'INVALID_SLUG') return 'URL 只能包含英文字母、数字、连字符和下划线';
   if (error.message === 'INVALID_AUTHOR') return '作者名称不能超过 100 个字符';
   if (error.message === 'INVALID_CATEGORY') return '分类名称不能超过 100 个字符';
+  if (error.message === 'INVALID_GALLERY_NAME') return 'Gallery 名称不能为空，且不能超过 160 个字符';
+  if (error.message === 'INVALID_GALLERY_DESCRIPTION') return 'Gallery 描述不能超过 5000 个字符';
+  if (error.message === 'INVALID_GALLERY_SETTINGS') return '扩展设置必须是有效的 JSON 对象';
+  if (error.message === 'INVALID_GALLERY_DATE') return '请输入有效的日期和时间';
+  if (error.message === 'INVALID_GALLERY_PHOTO') return 'Gallery 中包含无效的照片，请刷新页面后重试';
+  if (error.message === 'INVALID_PHOTO_DESCRIPTION') return '单张照片描述不能超过 1000 个字符';
+  if (error.message === 'INVALID_GALLERY_COVER') return '封面必须选择当前 Gallery 中的照片';
+  if (error.message === 'GALLERY_NOT_FOUND') return '这个 Gallery 已经不存在';
   if (error.message === 'INVALID_LOCALE') return '请选择有效的语言代码';
   if (error.message === 'DUPLICATE_LOCALE') return '同一种语言只能添加一次';
   if (error.message === 'NO_TRANSLATIONS') return '请至少添加一种语言的内容';

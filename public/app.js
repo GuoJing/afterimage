@@ -52,6 +52,9 @@ initializeImageLightbox();
 const editorForm = document.querySelector('[data-editor-form]');
 if (editorForm) initializeEditor(editorForm);
 
+const galleryEditor = document.querySelector('[data-gallery-editor]');
+if (galleryEditor) initializeGalleryEditor(galleryEditor);
+
 function initializeEditor(form) {
   const tabs = form.querySelector('[data-tabs]');
   const panels = form.querySelector('[data-panels]');
@@ -266,6 +269,125 @@ function initializeEditor(form) {
     textarea.setRangeText(`${leading}![${alt}](${url})${trailing}`, start, end, 'end');
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     textarea.focus();
+  }
+}
+
+function initializeGalleryEditor(form) {
+  const list = form.querySelector('[data-gallery-photo-list]');
+  const imageInput = form.querySelector('[data-gallery-image-input]');
+  const uploadStatus = form.querySelector('[data-gallery-upload-status]');
+  const emptyState = form.querySelector('[data-gallery-empty]');
+  const count = form.querySelector('[data-gallery-photo-count]');
+  const template = document.querySelector('#gallery-photo-template');
+  if (!list || !imageInput || !uploadStatus || !template) return;
+
+  let draggedPhoto = null;
+
+  list.addEventListener('dragstart', event => {
+    const card = event.target.closest('[data-gallery-photo]');
+    if (!card || event.target.closest('input, textarea, button, label')) {
+      event.preventDefault();
+      return;
+    }
+    draggedPhoto = card;
+    card.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+  });
+
+  list.addEventListener('dragover', event => {
+    if (!draggedPhoto) return;
+    const target = event.target.closest('[data-gallery-photo]');
+    if (!target || target === draggedPhoto) return;
+    event.preventDefault();
+    const cards = [...list.querySelectorAll('[data-gallery-photo]')];
+    const draggedIndex = cards.indexOf(draggedPhoto);
+    const targetIndex = cards.indexOf(target);
+    list.insertBefore(draggedPhoto, draggedIndex < targetIndex ? target.nextSibling : target);
+    refreshPhotoList();
+    setStatus('顺序已调整，保存 Gallery 后生效。', 'notice');
+  });
+
+  list.addEventListener('dragend', () => {
+    draggedPhoto?.classList.remove('is-dragging');
+    draggedPhoto = null;
+  });
+
+  list.addEventListener('click', async event => {
+    const button = event.target.closest('[data-delete-gallery-photo]');
+    if (!button) return;
+    const card = button.closest('[data-gallery-photo]');
+    if (!card || !window.confirm('确定从 Gallery 中移除这张照片吗？')) return;
+    button.disabled = true;
+    setStatus('正在移除照片…', 'uploading');
+    try {
+      const response = await fetch(`${form.dataset.photoDeleteBase}/${card.dataset.photoId}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf: form.querySelector('[data-csrf]').value }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || '移除照片失败。');
+      if (card.querySelector('[name="cover_photo_id"]')?.checked) form.querySelector('.gallery-no-cover input').checked = true;
+      card.remove();
+      refreshPhotoList();
+      setStatus('照片已移除。', 'success');
+    } catch (error) {
+      button.disabled = false;
+      setStatus(error.message || '移除照片失败。', 'error');
+    }
+  });
+
+  imageInput.addEventListener('change', async () => {
+    const images = imageFiles(imageInput.files);
+    imageInput.value = '';
+    if (!images.length) return;
+    const maxBytes = Number(form.dataset.imageMaxBytes || 0);
+    let completed = 0;
+    try {
+      for (const file of images) {
+        if (maxBytes && file.size > maxBytes) throw new Error(`“${file.name}”超过上传大小限制。`);
+        setStatus(`正在上传 ${completed + 1}/${images.length}…`, 'uploading');
+        const response = await fetch(form.dataset.photoUploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-CSRF-Token': form.querySelector('[data-csrf]').value,
+          },
+          body: file,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || '图片上传失败。');
+        appendPhoto(result, file.name);
+        completed += 1;
+      }
+      setStatus(images.length > 1 ? `已上传 ${images.length} 张照片，保存后可记录描述和顺序。` : '照片已上传，保存后可记录描述和顺序。', 'success');
+    } catch (error) {
+      setStatus(error.message || '图片上传失败。', 'error');
+    }
+  });
+
+  function appendPhoto(photo, filename) {
+    const card = template.content.firstElementChild.cloneNode(true);
+    card.dataset.photoId = String(photo.id);
+    card.querySelector('[name="photo_id"]').value = photo.id;
+    const image = card.querySelector('img');
+    image.src = photo.imageUrl;
+    image.alt = markdownAlt(filename);
+    card.querySelector('[name="cover_photo_id"]').value = photo.id;
+    list.append(card);
+    refreshPhotoList();
+  }
+
+  function refreshPhotoList() {
+    const cards = [...list.querySelectorAll('[data-gallery-photo]')];
+    cards.forEach((card, index) => { card.querySelector('[data-gallery-position]').textContent = String(index + 1); });
+    count.textContent = String(cards.length);
+    emptyState.hidden = cards.length > 0;
+  }
+
+  function setStatus(message, state) {
+    uploadStatus.textContent = message;
+    uploadStatus.className = `gallery-upload-status ${state}`;
   }
 }
 

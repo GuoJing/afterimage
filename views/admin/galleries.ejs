@@ -1,0 +1,25 @@
+<%- include('../partials/head', { pageTitle: 'Gallery', adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'galleries' }) %>
+  <main class="admin-content">
+    <header class="admin-page-head">
+      <div><p class="eyebrow">CONTENT</p><h1>Gallery 列表</h1><p>创建图库并管理封面、照片与展示顺序。</p></div>
+      <a class="button primary" href="<%= adminBasePath %>/galleries/new">＋ 新建 Gallery</a>
+    </header>
+    <% if (!galleries.length) { %>
+      <section class="admin-card"><div class="admin-empty"><span>▦</span><h2>还没有 Gallery</h2><p>先创建一个空 Gallery，再上传和整理照片。</p><a class="button primary" href="<%= adminBasePath %>/galleries/new">新建 Gallery</a></div></section>
+    <% } else { %>
+      <section class="gallery-admin-list">
+        <% galleries.forEach(gallery => { %>
+          <a class="admin-card gallery-list-item" href="<%= adminBasePath %>/galleries/<%= gallery.id %>/edit">
+            <span class="gallery-list-cover"><% if (gallery.cover_image_url) { %><img src="<%= gallery.cover_image_url %>" alt=""><% } else { %><span>无封面</span><% } %></span>
+            <span class="gallery-list-copy"><strong><%= gallery.name %></strong><small><%= gallery.author %> · <%= String(gallery.published_at).slice(0, 10) %></small></span>
+            <span class="gallery-list-count"><b><%= gallery.photo_count %></b><small>照片</small></span>
+            <b class="gallery-list-arrow">›</b>
+          </a>
+        <% }) %>
+      </section>
+    <% } %>
+  </main>
+</div>
+<%- include('../partials/footer', { adminLayout: true }) %>

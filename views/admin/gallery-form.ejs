@@ -1,0 +1,80 @@
+<%- include('../partials/head', { pageTitle: isNew ? '新建 Gallery' : '编辑 Gallery', adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'galleries' }) %>
+  <main class="admin-content gallery-editor-page">
+    <header class="admin-page-head">
+      <div><p class="eyebrow">CONTENT / GALLERY</p><h1><%= isNew ? '新建 Gallery' : '编辑 Gallery' %></h1><p><%= isNew ? '先保存基本信息，然后上传照片。' : '整理照片、设置封面并拖拽调整顺序。' %></p></div>
+      <a class="button" href="<%= adminBasePath %>/galleries">返回列表</a>
+    </header>
+    <% if (typeof saved !== 'undefined' && saved) { %><p class="form-success">Gallery 已保存</p><% } %>
+    <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+
+    <form class="gallery-editor-form" action="<%= isNew ? `${adminBasePath}/galleries` : `${adminBasePath}/galleries/${gallery.id}` %>" method="post" data-gallery-editor<% if (!isNew) { %> data-photo-upload-url="<%= adminBasePath %>/galleries/<%= gallery.id %>/photos" data-photo-delete-base="<%= adminBasePath %>/galleries/<%= gallery.id %>/photos" data-image-max-bytes="<%= imageMaxBytes %>"<% } %>>
+      <input type="hidden" name="csrf" value="<%= csrf %>" data-csrf>
+      <section class="admin-card gallery-details-card">
+        <div class="gallery-settings-grid">
+          <label>名称<input name="name" value="<%= gallery.name || '' %>" maxlength="160" required placeholder="例如 Tokyo, 2026"></label>
+          <label>作者<input name="author" value="<%= gallery.author || 'GuoJing' %>" maxlength="100" placeholder="GuoJing"></label>
+          <label>发布时间<input name="published_at" type="datetime-local" value="<%= datetimeLocalValue(gallery.published_at) %>" required></label>
+          <label class="gallery-description-field">描述<textarea name="description" rows="4" maxlength="5000" placeholder="简要介绍这个 Gallery"><%= gallery.description || '' %></textarea></label>
+        </div>
+        <details class="gallery-advanced-settings" <%= error && error.includes('JSON') ? 'open' : '' %>>
+          <summary>扩展设置（JSON）</summary>
+          <label>设置对象<textarea name="settings_json" rows="6" spellcheck="false"><%= gallery.settings_json || '{}' %></textarea><small>用于后续布局和展示选项；当前可以保持为 {}。</small></label>
+        </details>
+      </section>
+
+      <% if (!isNew) { %>
+        <section class="admin-card gallery-photos-card">
+          <header class="gallery-photos-heading">
+            <div><p class="eyebrow">PHOTOS</p><h2>照片 <span data-gallery-photo-count><%= gallery.photos.length %></span></h2><p>拖拽照片调整顺序，选择一张作为封面。</p></div>
+            <label class="button primary gallery-upload-button">＋ 上传照片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple data-gallery-image-input></label>
+          </header>
+          <p class="gallery-upload-status" data-gallery-upload-status aria-live="polite"></p>
+          <label class="gallery-no-cover"><input type="radio" name="cover_photo_id" value="" <%= gallery.cover_photo_id ? '' : 'checked' %>> 不设置封面</label>
+          <div class="gallery-photo-grid" data-gallery-photo-list>
+            <% gallery.photos.forEach((photo, index) => { %>
+              <article class="gallery-photo-card" draggable="true" data-gallery-photo data-photo-id="<%= photo.id %>">
+                <input type="hidden" name="photo_id" value="<%= photo.id %>">
+                <div class="gallery-photo-preview">
+                  <img src="<%= photo.image_url %>" alt="<%= photo.description || `照片 ${index + 1}` %>">
+                  <span class="gallery-drag-handle" aria-hidden="true">⠿</span>
+                  <span class="gallery-position" data-gallery-position><%= index + 1 %></span>
+                  <label class="gallery-cover-choice"><input type="radio" name="cover_photo_id" value="<%= photo.id %>" <%= Number(gallery.cover_photo_id) === photo.id ? 'checked' : '' %>> 封面</label>
+                </div>
+                <label>照片描述<textarea name="photo_description" rows="3" maxlength="1000" placeholder="可留空"><%= photo.description || '' %></textarea></label>
+                <label>拍摄时间<input type="datetime-local" name="photo_taken_at" value="<%= datetimeLocalValue(photo.taken_at) %>"></label>
+                <button class="gallery-remove-photo" type="button" data-delete-gallery-photo>移除照片</button>
+              </article>
+            <% }) %>
+          </div>
+          <div class="gallery-empty-photos" data-gallery-empty <%= gallery.photos.length ? 'hidden' : '' %>><span>◇</span><p>Gallery 还是空的，上传第一张照片吧。</p></div>
+        </section>
+      <% } %>
+
+      <div class="gallery-form-actions">
+        <% if (!isNew) { %><button class="danger" type="submit" form="delete-gallery" data-confirm="确定删除这个 Gallery 吗？照片记录也会一并移除。">删除 Gallery</button><% } %>
+        <button class="primary" type="submit"><%= isNew ? '创建并上传照片' : '保存 Gallery' %></button>
+      </div>
+    </form>
+    <% if (!isNew) { %><form id="delete-gallery" action="<%= adminBasePath %>/galleries/<%= gallery.id %>/delete" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"></form><% } %>
+  </main>
+</div>
+
+<% if (!isNew) { %>
+<template id="gallery-photo-template">
+  <article class="gallery-photo-card" draggable="true" data-gallery-photo data-photo-id="">
+    <input type="hidden" name="photo_id" value="">
+    <div class="gallery-photo-preview">
+      <img src="" alt="新上传照片">
+      <span class="gallery-drag-handle" aria-hidden="true">⠿</span>
+      <span class="gallery-position" data-gallery-position></span>
+      <label class="gallery-cover-choice"><input type="radio" name="cover_photo_id" value=""> 封面</label>
+    </div>
+    <label>照片描述<textarea name="photo_description" rows="3" maxlength="1000" placeholder="可留空"></textarea></label>
+    <label>拍摄时间<input type="datetime-local" name="photo_taken_at" value=""></label>
+    <button class="gallery-remove-photo" type="button" data-delete-gallery-photo>移除照片</button>
+  </article>
+</template>
+<% } %>
+<%- include('../partials/footer', { adminLayout: true }) %>
