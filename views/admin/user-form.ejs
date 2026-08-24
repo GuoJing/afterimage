@@ -1,0 +1,53 @@
+<%- include('../partials/head', { pageTitle: isNew ? '新增用户' : `编辑用户 · ${user.nickname}`, adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'users' }) %>
+  <main class="admin-content">
+    <header class="admin-page-head user-page-head">
+      <div><p class="eyebrow"><%= isNew ? 'NEW MEMBER' : 'MEMBER PROFILE' %></p><h1><%= isNew ? '新增用户' : user.nickname %></h1><p><%= isNew ? '创建会员资料，并通过邮箱邀请用户设置密码。' : `@${user.username} · ${user.email}` %></p></div>
+      <a class="button" href="<%= adminBasePath %>/users">返回用户列表</a>
+    </header>
+
+    <% if (error) { %><p class="form-error"><%= error %></p><% } %>
+    <% if (saved) { %><p class="form-success">用户信息已保存。</p><% } %>
+    <% if (created) { %><p class="form-success">用户已经创建。</p><% } %>
+    <% if (resetMessage) { %><p class="<%= resetError ? 'form-error' : 'form-success' %>"><%= resetMessage %></p><% } %>
+
+    <div class="user-admin-layout">
+      <section class="admin-card user-editor-card">
+        <div class="navigation-card-heading"><p class="eyebrow">PROFILE</p><h2>基本信息</h2></div>
+        <form action="<%= isNew ? `${adminBasePath}/users` : `${adminBasePath}/users/${user.id}` %>" method="post" data-account-form>
+          <input type="hidden" name="csrf" value="<%= csrf %>">
+          <div class="user-form-grid">
+            <label>登录名<input name="username" value="<%= user.username %>" autocomplete="off" pattern="[A-Za-z]{3,32}" minlength="3" maxlength="32" required><small>仅限 3–32 位英文字母，不区分大小写。</small></label>
+            <label>昵称<input name="nickname" value="<%= user.nickname %>" autocomplete="off" maxlength="64" required></label>
+            <label class="user-email-field">邮箱<input name="email" type="email" value="<%= user.email %>" autocomplete="off" maxlength="254" required><small>修改邮箱会让旧登录会话及尚未使用的重置链接失效。</small></label>
+            <label>会员等级<select name="membership_level" required><% for (let level = 0; level <= 5; level += 1) { %><option value="<%= level %>" <%= Number(user.membership_level) === level ? 'selected' : '' %>><%= level %></option><% } %></select><small>等级范围固定为 0–5。</small></label>
+            <label>账号状态<select name="status" required><option value="active" <%= user.status === 'active' ? 'selected' : '' %>>正常</option><option value="disabled" <%= user.status === 'disabled' ? 'selected' : '' %>>封禁</option></select><small>封禁后不能登录，现有登录会话也会失效。</small></label>
+          </div>
+          <div class="navigation-form-actions">
+            <a class="button" href="<%= adminBasePath %>/users">取消</a>
+            <button class="primary" type="submit" data-submit-label="保存中…"><%= isNew ? '创建用户' : '保存用户' %></button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="admin-card user-security-card">
+        <p class="eyebrow">SECURITY</p><h2>账号安全</h2>
+        <% if (isNew) { %>
+          <p>创建正常状态的用户后，系统会自动向该邮箱发送一次密码设置链接。管理员不会设置或看到用户密码。</p>
+        <% } else { %>
+          <dl class="user-admin-meta">
+            <div><dt>注册时间</dt><dd><%= user.created_at || '—' %></dd></div>
+            <div><dt>最后登录</dt><dd><%= user.last_login_at || '从未登录' %></dd></div>
+          </dl>
+          <form action="<%= adminBasePath %>/users/<%= user.id %>/reset-password" method="post" data-account-form>
+            <input type="hidden" name="csrf" value="<%= csrf %>">
+            <button type="submit" data-submit-label="发送中…" <%= passwordResetAvailable && user.status === 'active' ? '' : 'disabled' %>>发送密码重置邮件</button>
+          </form>
+          <small class="user-security-note"><%= user.status === 'active' ? '邮件链接 30 分钟有效，只能使用一次。管理员不能直接修改密码。' : '需要先解除封禁，才能发送有效的重置链接。' %></small>
+        <% } %>
+      </aside>
+    </div>
+  </main>
+</div>
+<%- include('../partials/footer', { adminLayout: true }) %>

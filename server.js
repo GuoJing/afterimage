@@ -11,7 +11,7 @@ import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
 import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
-import { createRegistrationSecurity, hashPassword, MemberRateLimitError, normalizeEmail, validateMemberFields, verifyPassword } from './lib/member-security.js';
+import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -24,8 +24,12 @@ const adminLoginSecurity = createAdminLoginSecurity({
   mailConfigured: getMailStatus().configured,
 });
 const registrationSecurity = createRegistrationSecurity({ mailConfigured: getMailStatus().configured });
+const passwordResetSecurity = createPasswordResetSecurity({ mailConfigured: getMailStatus().configured });
 if (process.env.NODE_ENV === 'production' && (!process.env.ADMIN_PASSWORD || !process.env.SESSION_SECRET)) {
   throw new Error('生产环境必须设置 ADMIN_PASSWORD 和 SESSION_SECRET');
+}
+if (process.env.NODE_ENV === 'production' && !siteUrl.startsWith('https://')) {
+  throw new Error('生产环境的 SITE_URL 必须使用 HTTPS，以安全发送密码重置链接');
 }
 const defaultLocale = normalizeLocale(process.env.DEFAULT_LOCALE || 'zh');
 const configuredLocales = [...new Set((process.env.BLOG_LOCALES || 'zh,en,ja').split(',').map(normalizeLocale).filter(Boolean))];
@@ -161,14 +165,30 @@ db.exec(`
     avatar_url TEXT NOT NULL DEFAULT '',
     membership_level INTEGER NOT NULL DEFAULT 0 CHECK (membership_level >= 0),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    session_version INTEGER NOT NULL DEFAULT 0,
     last_login_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at INTEGER NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS password_reset_tokens_user_id
+  ON password_reset_tokens(user_id);
 `);
 const postColumns = new Set(db.prepare('PRAGMA table_info(posts)').all().map(column => column.name));
 if (!postColumns.has('author')) db.exec("ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT 'GuoJing'");
 if (!postColumns.has('category')) db.exec("ALTER TABLE posts ADD COLUMN category TEXT NOT NULL DEFAULT ''");
+const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(column => column.name));
+if (!userColumns.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))").run(Date.now());
 ensureGallerySlugSchema();
 
 const markdownRenderer = new Renderer();
@@ -666,6 +686,103 @@ app.get('/account', (req, res) => {
   renderAccount(req, res);
 });
 
+app.post('/account/forgot', async (req, res) => {
+  const responseStartedAt = Date.now();
+  if (!validMemberCsrf(req)) return renderAccount(req, res.status(403), { mode: 'forgot', errorCode: 'EXPIRED_FORM' });
+  if (!passwordResetSecurity.ready) return renderAccount(req, res.status(503), { mode: 'forgot', errorCode: 'MAIL_UNAVAILABLE' });
+  const email = normalizeEmail(req.body.email);
+  if (!isMemberEmail(email)) return renderAccount(req, res.status(400), { mode: 'forgot', errorCode: 'INVALID_EMAIL', fields: { email } });
+
+  try {
+    passwordResetSecurity.consumeRequest(email, req.ip);
+  } catch (error) {
+    return handleMemberRateLimit(req, res, error, 'forgot', { email });
+  }
+
+  const user = db.prepare("SELECT id, email FROM users WHERE email = ? COLLATE NOCASE AND status = 'active' LIMIT 1").get(email);
+  if (user) {
+    const reset = createPasswordResetRecord(user.id, res.locals.locale);
+    setImmediate(() => passwordResetSecurity.sendResetEmail({ to: user.email, resetUrl: reset.resetUrl, locale: res.locals.locale })
+      .catch(error => console.error('会员密码重置邮件发送失败：', error)));
+  }
+
+  await waitForMinimumDuration(responseStartedAt, 150);
+  res.redirect(`${accountUrl(res.locals.locale)}&mode=forgot&sent=1`);
+});
+
+app.get('/account/reset', async (req, res) => {
+  try {
+    passwordResetSecurity.consumeTokenAttempt(req.ip);
+  } catch (error) {
+    return handleMemberRateLimit(req, res, error, 'reset');
+  }
+
+  if (typeof req.query.token === 'string') {
+    const tokenHash = hashPasswordResetToken(req.query.token);
+    const reset = tokenHash ? findValidPasswordReset(tokenHash) : null;
+    await regenerateSession(req);
+    if (reset) req.session.pendingPasswordReset = tokenHash;
+    req.session.memberCsrf = createLoginCsrf();
+    await saveSession(req);
+    return res.redirect(303, `${accountResetUrl(res.locals.locale)}${reset ? '' : '&invalid=1'}`);
+  }
+
+  const reset = getPendingPasswordReset(req);
+  if (!reset) delete req.session.pendingPasswordReset;
+  return renderAccount(req, res, {
+    mode: 'reset',
+    errorCode: !reset || req.query.invalid === '1' ? 'INVALID_RESET_TOKEN' : null,
+    resetAvailable: Boolean(reset),
+  });
+});
+
+app.post('/account/reset', async (req, res) => {
+  if (!validMemberCsrf(req)) return renderAccount(req, res.status(403), { mode: 'reset', errorCode: 'EXPIRED_FORM', resetAvailable: Boolean(getPendingPasswordReset(req)) });
+  try {
+    passwordResetSecurity.consumeTokenAttempt(req.ip);
+  } catch (error) {
+    return handleMemberRateLimit(req, res, error, 'reset');
+  }
+  const reset = getPendingPasswordReset(req);
+  if (!reset) return renderAccount(req, res.status(400), { mode: 'reset', errorCode: 'INVALID_RESET_TOKEN', resetAvailable: false });
+
+  let password;
+  try {
+    password = validateNewPassword({ ...req.body, username: reset.username, email: reset.email });
+  } catch (error) {
+    return renderAccount(req, res.status(400), { mode: 'reset', errorCode: error.code || 'INVALID_REGISTRATION', resetAvailable: true });
+  }
+
+  try {
+    const passwordHash = await hashPassword(password);
+    const changedUser = db.transaction(() => {
+      const current = findValidPasswordReset(req.session.pendingPasswordReset);
+      if (!current) return null;
+      db.prepare(`
+        UPDATE users
+        SET password_hash = ?, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'active'
+      `).run(passwordHash, current.user_id);
+      db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(current.user_id);
+      return current;
+    })();
+    if (!changedUser) {
+      delete req.session.pendingPasswordReset;
+      return renderAccount(req, res.status(400), { mode: 'reset', errorCode: 'INVALID_RESET_TOKEN', resetAvailable: false });
+    }
+
+    await regenerateSession(req);
+    req.session.memberCsrf = createLoginCsrf();
+    await saveSession(req);
+    setImmediate(() => passwordResetSecurity.sendPasswordChangedEmail({ to: changedUser.email, locale: res.locals.locale })
+      .catch(error => console.error('会员密码修改通知邮件发送失败：', error)));
+    return res.redirect(`${accountUrl(res.locals.locale)}&reset=1`);
+  } catch (error) {
+    console.error('会员密码重置失败：', error);
+    return renderAccount(req, res.status(500), { mode: 'reset', errorCode: 'RESET_FAILED', resetAvailable: true });
+  }
+});
+
 app.post('/account/login', async (req, res) => {
   if (!validMemberCsrf(req)) return renderAccount(req, res.status(403), { mode: 'login', errorCode: 'EXPIRED_FORM' });
   const rawIdentifier = String(req.body.identifier || '').trim().toLowerCase();
@@ -677,7 +794,7 @@ app.post('/account/login', async (req, res) => {
   }
 
   const user = db.prepare(`
-    SELECT id, password_hash, status
+    SELECT id, password_hash, status, session_version
     FROM users
     WHERE email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE
     LIMIT 1
@@ -696,6 +813,7 @@ app.post('/account/login', async (req, res) => {
   try {
     await regenerateSession(req);
     req.session.userId = user.id;
+    req.session.userSessionVersion = user.session_version;
     req.session.memberCsrf = createLoginCsrf();
     await saveSession(req);
     res.redirect(accountUrl(res.locals.locale));
@@ -784,6 +902,7 @@ app.post('/account/register', consumeMemberRegistrationAttempt, parseAvatarUploa
     `).run(fields.username, fields.email, fields.nickname, passwordHash, avatarUrl);
     await regenerateSession(req);
     req.session.userId = Number(result.lastInsertRowid);
+    req.session.userSessionVersion = 0;
     req.session.memberCsrf = createLoginCsrf();
     await saveSession(req);
     res.redirect(`${accountUrl(res.locals.locale)}&registered=1`);
@@ -798,6 +917,7 @@ app.post('/account/register', consumeMemberRegistrationAttempt, parseAvatarUploa
 app.post('/account/logout', (req, res) => {
   if (!validMemberCsrf(req)) return res.status(403).send('请求已过期，请刷新页面后重试。');
   delete req.session.userId;
+  delete req.session.userSessionVersion;
   req.session.memberCsrf = createLoginCsrf();
   res.redirect(accountUrl(res.locals.locale));
 });
@@ -896,6 +1016,82 @@ app.get(adminBasePath, requireAdmin, (req, res) => {
     ORDER BY COALESCE(p.published_at, p.created_at) DESC
   `).all(defaultLocale);
   res.render('admin/index', { posts, csrf: req.session.csrf });
+});
+
+app.get(`${adminBasePath}/users`, requireAdmin, (req, res) => {
+  res.render('admin/users', { users: getUsersForAdmin(), csrf: req.session.csrf });
+});
+
+app.get(`${adminBasePath}/users/new`, requireAdmin, (req, res) => {
+  renderAdminUserForm(req, res, { user: emptyManagedUser(), isNew: true });
+});
+
+app.post(`${adminBasePath}/users`, requireAdmin, requireCsrf, async (req, res) => {
+  let user;
+  try {
+    user = validateManagedUser(req.body);
+    assertManagedUserUnique(user);
+    const result = db.prepare(`
+      INSERT INTO users (username, email, nickname, password_hash, membership_level, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(user.username, user.email, user.nickname, unusablePasswordHash(), user.membership_level, user.status);
+    const created = getUserForAdmin(Number(result.lastInsertRowid));
+    const resetStatus = created.status === 'active'
+      ? await sendAdminPasswordReset(created, req.ip, res.locals.locale)
+      : 'blocked';
+    return res.redirect(`${adminBasePath}/users/${created.id}/edit?created=1&reset=${encodeURIComponent(resetStatus)}`);
+  } catch (error) {
+    return renderAdminUserForm(req, res.status(400), {
+      user: user || managedUserFromBody(req.body),
+      isNew: true,
+      error: managedUserError(error),
+    });
+  }
+});
+
+app.get(`${adminBasePath}/users/:id/edit`, requireAdmin, (req, res) => {
+  const user = getUserForAdmin(Number(req.params.id));
+  if (!user) return res.status(404).render('not-found');
+  renderAdminUserForm(req, res, { user, isNew: false });
+});
+
+app.post(`${adminBasePath}/users/:id`, requireAdmin, requireCsrf, (req, res) => {
+  const id = Number(req.params.id);
+  const existing = getUserForAdmin(id);
+  if (!existing) return res.status(404).render('not-found');
+  let user;
+  try {
+    user = validateManagedUser(req.body);
+    assertManagedUserUnique(user, id);
+    const securityChanged = existing.email !== user.email || existing.status !== user.status;
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE users
+        SET username = ?, email = ?, nickname = ?, membership_level = ?, status = ?,
+            session_version = session_version + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(user.username, user.email, user.nickname, user.membership_level, user.status, securityChanged ? 1 : 0, id);
+      if (securityChanged) {
+        db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(id);
+      }
+    })();
+    return res.redirect(`${adminBasePath}/users/${id}/edit?saved=1`);
+  } catch (error) {
+    return renderAdminUserForm(req, res.status(400), {
+      user: { ...(user || managedUserFromBody(req.body)), id, created_at: existing.created_at, last_login_at: existing.last_login_at },
+      isNew: false,
+      error: managedUserError(error),
+    });
+  }
+});
+
+app.post(`${adminBasePath}/users/:id/reset-password`, requireAdmin, requireCsrf, async (req, res) => {
+  const user = getUserForAdmin(Number(req.params.id));
+  if (!user) return res.status(404).render('not-found');
+  const resetStatus = user.status === 'active'
+    ? await sendAdminPasswordReset(user, req.ip, res.locals.locale)
+    : 'blocked';
+  res.redirect(`${adminBasePath}/users/${user.id}/edit?reset=${encodeURIComponent(resetStatus)}`);
 });
 
 app.get(`${adminBasePath}/posts/new`, requireAdmin, (req, res) => {
@@ -1857,6 +2053,7 @@ function escapeMarkdownLabel(value) {
 
 function localizePath(currentPath, locale) {
   if (currentPath === '/account') return accountUrl(locale);
+  if (currentPath === '/account/reset') return accountResetUrl(locale);
   if (currentPath === '/archive') return archivePath(locale);
   if (currentPath === '/topics') return topicsPath(locale);
   const topicMatch = currentPath.match(/^\/topics\/([^/]+)$/);
@@ -2644,16 +2841,161 @@ function getCurrentUser(req) {
   const userId = Number(req.session?.userId);
   if (!Number.isInteger(userId) || userId <= 0) return null;
   const user = db.prepare(`
-    SELECT id, username, email, nickname, avatar_url, membership_level, created_at
+    SELECT id, username, email, nickname, avatar_url, membership_level, session_version, created_at
     FROM users
     WHERE id = ? AND status = 'active'
   `).get(userId);
-  if (!user) delete req.session.userId;
+  if (!user || user.session_version !== Number(req.session.userSessionVersion)) {
+    delete req.session.userId;
+    delete req.session.userSessionVersion;
+    return null;
+  }
   return user || null;
 }
 
 function accountUrl(locale) {
   return `/account?lang=${encodeURIComponent(normalizeLocale(locale) || defaultLocale)}`;
+}
+
+function accountResetUrl(locale) {
+  return `/account/reset?lang=${encodeURIComponent(normalizeLocale(locale) || defaultLocale)}`;
+}
+
+function createPasswordResetRecord(userId, locale, { invalidateExisting = true } = {}) {
+  const { token, tokenHash } = createPasswordResetToken();
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  const result = db.transaction(() => {
+    if (invalidateExisting) {
+      db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(userId);
+    }
+    return db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)').run(userId, tokenHash, expiresAt);
+  })();
+  return {
+    id: Number(result.lastInsertRowid),
+    resetUrl: `${siteUrl}/account/reset?token=${encodeURIComponent(token)}&lang=${encodeURIComponent(normalizeLocale(locale) || defaultLocale)}`,
+  };
+}
+
+async function sendAdminPasswordReset(user, ip, locale) {
+  if (!passwordResetSecurity.ready) return 'unavailable';
+  try {
+    passwordResetSecurity.consumeAdminRequest(user.email, ip);
+  } catch (error) {
+    if (error instanceof MemberRateLimitError) return 'limited';
+    throw error;
+  }
+
+  const reset = createPasswordResetRecord(user.id, locale, { invalidateExisting: false });
+  try {
+    await passwordResetSecurity.sendResetEmail({ to: user.email, resetUrl: reset.resetUrl, locale });
+    db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id != ? AND used_at IS NULL').run(user.id, reset.id);
+    return 'sent';
+  } catch (error) {
+    db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(reset.id);
+    console.error('管理员发送会员密码重置邮件失败：', error);
+    return 'failed';
+  }
+}
+
+function getUsersForAdmin() {
+  return db.prepare(`
+    SELECT id, username, email, nickname, avatar_url, membership_level, status, last_login_at, created_at, updated_at
+    FROM users
+    ORDER BY created_at DESC, id DESC
+  `).all();
+}
+
+function getUserForAdmin(id) {
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return db.prepare(`
+    SELECT id, username, email, nickname, avatar_url, membership_level, status, last_login_at, created_at, updated_at
+    FROM users
+    WHERE id = ?
+  `).get(id) || null;
+}
+
+function emptyManagedUser() {
+  return { username: '', email: '', nickname: '', membership_level: 0, status: 'active', avatar_url: '' };
+}
+
+function managedUserFromBody(body = {}) {
+  return {
+    username: String(body.username || '').trim().toLowerCase(),
+    email: normalizeEmail(body.email),
+    nickname: String(body.nickname || '').trim(),
+    membership_level: Number(body.membership_level),
+    status: String(body.status || ''),
+    avatar_url: '',
+  };
+}
+
+function validateManagedUser(body) {
+  return validateManagedUserFields(body);
+}
+
+function assertManagedUserUnique(user, excludedId = null) {
+  const duplicateUsername = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE AND (? IS NULL OR id != ?) LIMIT 1')
+    .get(user.username, excludedId, excludedId);
+  if (duplicateUsername) throw Object.assign(new Error('MANAGED_USERNAME_EXISTS'), { code: 'MANAGED_USERNAME_EXISTS' });
+  const duplicateEmail = db.prepare('SELECT id FROM users WHERE email = ? COLLATE NOCASE AND (? IS NULL OR id != ?) LIMIT 1')
+    .get(user.email, excludedId, excludedId);
+  if (duplicateEmail) throw Object.assign(new Error('MANAGED_EMAIL_EXISTS'), { code: 'MANAGED_EMAIL_EXISTS' });
+}
+
+function unusablePasswordHash() {
+  return `pending$${crypto.randomBytes(32).toString('base64url')}`;
+}
+
+function managedUserError(error) {
+  const messages = {
+    INVALID_MANAGED_USERNAME: '登录名只能使用 3–32 位英文字母。',
+    INVALID_MANAGED_EMAIL: '请输入有效的邮箱地址。',
+    INVALID_MANAGED_NICKNAME: '昵称不能为空，且不能超过 64 个字符。',
+    INVALID_MANAGED_LEVEL: '会员等级只能选择 0–5。',
+    INVALID_MANAGED_STATUS: '请选择有效的用户状态。',
+    MANAGED_USERNAME_EXISTS: '这个登录名已经被使用。',
+    MANAGED_EMAIL_EXISTS: '这个邮箱已经注册。',
+  };
+  return messages[error?.code] || '用户信息保存失败，请检查后重试。';
+}
+
+function renderAdminUserForm(req, res, { user, isNew, error = null }) {
+  const resetMessages = {
+    sent: '密码重置邮件已发送。链接将在 30 分钟后失效。',
+    failed: '用户已保存，但邮件发送失败，请稍后重试。',
+    limited: '发送过于频繁，同一用户至少间隔 2 分钟。',
+    unavailable: '邮件功能尚未配置，暂时不能发送密码重置邮件。',
+    blocked: '该用户已被封禁，不能发送有效的密码重置链接。',
+  };
+  return res.render('admin/user-form', {
+    user,
+    isNew,
+    error,
+    csrf: req.session.csrf,
+    saved: req.query.saved === '1',
+    created: req.query.created === '1',
+    resetMessage: resetMessages[req.query.reset] || null,
+    resetError: ['failed', 'limited', 'unavailable', 'blocked'].includes(req.query.reset),
+    passwordResetAvailable: passwordResetSecurity.ready,
+  });
+}
+
+function findValidPasswordReset(tokenHash) {
+  if (!/^[a-f0-9]{64}$/.test(String(tokenHash || ''))) return null;
+  return db.prepare(`
+    SELECT password_reset_tokens.id, password_reset_tokens.user_id, users.username, users.email
+    FROM password_reset_tokens
+    JOIN users ON users.id = password_reset_tokens.user_id
+    WHERE password_reset_tokens.token_hash = ?
+      AND password_reset_tokens.used_at IS NULL
+      AND password_reset_tokens.expires_at > ?
+      AND users.status = 'active'
+    LIMIT 1
+  `).get(tokenHash, Date.now()) || null;
+}
+
+function getPendingPasswordReset(req) {
+  return findValidPasswordReset(req.session?.pendingPasswordReset);
 }
 
 function validMemberCsrf(req) {
@@ -2662,10 +3004,11 @@ function validMemberCsrf(req) {
 }
 
 function renderAccount(req, res, {
-  mode = req.query.mode === 'register' ? 'register' : 'login',
+  mode = ['register', 'forgot'].includes(req.query.mode) ? req.query.mode : 'login',
   errorCode = null,
   fields = {},
   retryAfterSeconds = 0,
+  resetAvailable = false,
 } = {}) {
   if (!req.session.memberCsrf) req.session.memberCsrf = createLoginCsrf();
   const copy = accountCopy(res.locals.locale);
@@ -2679,8 +3022,12 @@ function renderAccount(req, res, {
     memberCsrf: req.session.memberCsrf,
     currentUser,
     registrationAvailable: registrationSecurity.ready,
+    passwordResetAvailable: passwordResetSecurity.ready,
+    resetAvailable,
     retryAfterSeconds: Math.max(retryAfterSeconds, storedRetry),
     registered: req.query.registered === '1',
+    passwordReset: req.query.reset === '1',
+    resetRequestSent: req.query.sent === '1',
   });
 }
 
@@ -2736,37 +3083,43 @@ function accountCopy(locale) {
   if (String(locale).startsWith('ja')) return {
     login: 'ログイン', register: '新規登録', account: 'アカウント', logout: 'ログアウト',
     loginLead: 'メールアドレスまたはログイン名でログイン', identifier: 'メールアドレスまたはログイン名', password: 'パスワード', loginButton: 'ログイン',
+    forgotPassword: 'パスワードをお忘れですか？', forgotTitle: 'パスワードを忘れた場合', forgotLead: '登録済みのメールアドレスへ再設定リンクを送信します。', sendResetLink: '再設定リンクを送信', resetSent: '登録済みの場合、再設定リンクを送信しました。メールをご確認ください。',
+    resetTitle: 'パスワードを再設定', resetLead: '新しい安全なパスワードを入力してください。', newPassword: '新しいパスワード', resetButton: 'パスワードを変更', resetSuccess: 'パスワードを変更しました。新しいパスワードでログインしてください。',
     noAccount: 'アカウントをお持ちでないですか？', createAccount: '新規登録', haveAccount: 'すでにアカウントをお持ちですか？', backToLogin: 'ログインへ',
     username: 'ログイン名', usernameHint: '半角英字のみ、3〜32文字', email: 'メールアドレス', nickname: 'ニックネーム',
     passwordHint: '12文字以上で、大文字・小文字・数字・記号を含めてください', passwordConfirm: 'パスワード（確認）', avatar: 'プロフィール画像（任意）', avatarHint: 'JPEG、PNG、WebP、AVIF。最大1 MiB。',
     code: '6桁の確認コード', sendCode: '確認コードを送信', sendingCode: '送信中…', codeSent: '確認コードを送信しました。5分以内に入力してください。', registerButton: '登録する',
     welcome: 'ようこそ', level: '会員レベル', registered: '登録が完了しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
     errors: {
-      EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜64文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、新規登録をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。',
+      EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜64文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、メール機能をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。', INVALID_RESET_TOKEN: 'この再設定リンクは無効、使用済み、または期限切れです。', RESET_FAILED: 'パスワードを変更できませんでした。後でもう一度お試しください。',
     },
   };
   if (String(locale).startsWith('en')) return {
     login: 'Login', register: 'Register', account: 'Account', logout: 'Log out',
     loginLead: 'Sign in with your email or login name', identifier: 'Email or login name', password: 'Password', loginButton: 'Login',
+    forgotPassword: 'Forgot your password?', forgotTitle: 'Forgot password', forgotLead: 'We will send a reset link to your registered email address.', sendResetLink: 'Send reset link', resetSent: 'If that address is registered, a reset link has been sent. Check your email.',
+    resetTitle: 'Reset password', resetLead: 'Choose a new, secure password.', newPassword: 'New password', resetButton: 'Change password', resetSuccess: 'Your password was changed. Log in with your new password.',
     noAccount: 'No account yet?', createAccount: 'Create one', haveAccount: 'Already have an account?', backToLogin: 'Back to login',
     username: 'Login name', usernameHint: 'English letters only, 3–32 characters', email: 'Email', nickname: 'Nickname',
     passwordHint: 'At least 12 characters with uppercase, lowercase, number, and symbol', passwordConfirm: 'Confirm password', avatar: 'Avatar (optional)', avatarHint: 'JPEG, PNG, WebP, or AVIF. Maximum 1 MiB.',
     code: '6-digit verification code', sendCode: 'Send code', sendingCode: 'Sending…', codeSent: 'Verification code sent. Enter it within 5 minutes.', registerButton: 'Create account',
     welcome: 'Welcome', level: 'Membership level', registered: 'Your account has been created.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
     errors: {
-      EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 64 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Registration is temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.',
+      EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 64 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Email features are temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.', INVALID_RESET_TOKEN: 'This reset link is invalid, expired, or has already been used.', RESET_FAILED: 'The password could not be changed. Please try again later.',
     },
   };
   return {
     login: '登录', register: '注册', account: '会员中心', logout: '退出登录',
     loginLead: '使用邮箱或登录名登录', identifier: '邮箱或登录名', password: '密码', loginButton: '登录',
+    forgotPassword: '忘记密码？', forgotTitle: '忘记密码', forgotLead: '我们会向注册邮箱发送密码重置链接。', sendResetLink: '发送重置链接', resetSent: '如果该邮箱已经注册，重置链接已发送，请检查邮件。',
+    resetTitle: '重新设置密码', resetLead: '请输入一个新的安全密码。', newPassword: '新密码', resetButton: '修改密码', resetSuccess: '密码已经修改，请使用新密码登录。',
     noAccount: '还没有账号？', createAccount: '立即注册', haveAccount: '已经有账号？', backToLogin: '返回登录',
     username: '登录名', usernameHint: '仅限英文字母，3–32 位', email: '邮箱', nickname: '昵称',
     passwordHint: '至少 12 位，并同时包含大小写字母、数字和符号', passwordConfirm: '确认密码', avatar: '头像（非必填）', avatarHint: '支持 JPEG、PNG、WebP、AVIF，最大 1 MiB。',
     code: '6 位邮箱验证码', sendCode: '发送验证码', sendingCode: '正在发送…', codeSent: '验证码已发送，请在 5 分钟内填写。', registerButton: '完成注册',
     welcome: '欢迎', level: '会员等级', registered: '账号注册成功。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
     errors: {
-      EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–64 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '当前暂时无法注册，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。',
+      EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–64 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '邮件功能暂时不可用，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。', INVALID_RESET_TOKEN: '这个重置链接无效、已经使用或已经过期。', RESET_FAILED: '密码修改失败，请稍后再试。',
     },
   };
 }
@@ -2813,6 +3166,11 @@ function regenerateSession(req) {
 
 function saveSession(req) {
   return new Promise((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
+}
+
+function waitForMinimumDuration(startedAt, minimumMs) {
+  const remaining = Math.max(0, minimumMs - (Date.now() - startedAt));
+  return new Promise(resolve => setTimeout(resolve, remaining));
 }
 
 function friendlyError(error) {

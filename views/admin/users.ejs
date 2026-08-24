@@ -1,0 +1,21 @@
+<%- include('../partials/head', { pageTitle: '用户管理', adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'users' }) %>
+  <main class="admin-content">
+    <header class="admin-page-head">
+      <div><p class="eyebrow">MEMBERS</p><h1>用户管理</h1><p>管理会员资料、账号状态和访问等级。</p></div>
+      <a class="button primary" href="<%= adminBasePath %>/users/new">＋ 新增用户</a>
+    </header>
+    <section class="admin-card user-list">
+      <% if (!users.length) { %><div class="admin-empty"><span>♙</span><h2>还没有用户</h2><p>新增用户后，系统会通过邮件邀请他设置密码。</p><a class="button primary" href="<%= adminBasePath %>/users/new">新增用户</a></div><% } %>
+      <% users.forEach(user => { %>
+        <a class="user-list-item" href="<%= adminBasePath %>/users/<%= user.id %>/edit">
+          <% if (user.avatar_url) { %><img src="<%= user.avatar_url %>" width="42" height="42" alt=""><% } else { %><span class="user-list-avatar" aria-hidden="true"><%= user.nickname.slice(0, 1).toUpperCase() %></span><% } %>
+          <span class="user-list-copy"><strong><%= user.nickname %></strong><small>@<%= user.username %> · <%= user.email %></small></span>
+          <span class="user-list-meta"><b>Level <%= user.membership_level %></b><em class="status <%= user.status === 'active' ? 'published' : 'disabled' %>"><%= user.status === 'active' ? '正常' : '已封禁' %></em><i>›</i></span>
+        </a>
+      <% }) %>
+    </section>
+  </main>
+</div>
+<%- include('../partials/footer', { adminLayout: true }) %>
