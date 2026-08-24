@@ -3,6 +3,7 @@
 ## 已补全
 
 - 首页按中文、英文、日文生成独立搜索标题、摘要及 initial HTML 中可见的站点介绍。
+- 首页底部 About 区块整体右对齐，介绍文字保持最大宽度并靠右排列。
 - 首页 JSON-LD 建立 `WebSite → Organization → Person` 实体关系；About 页面输出 `Person + WebPage + Organization` 图谱，并支持通过 `BLOG_SOCIAL_URLS` 配置 `sameAs`。
 - 文章、首页、Gallery 详情与 Collections 列表中的作者链接到当前语言 About 页面，分类链接到可索引 Topic 页面；日期、作者、分类和照片数之间的分隔点使用独立的非链接元素，链接下划线不会延伸到分隔符。Collections 卡片拆分为标题、箭头和图片三个详情入口，避免作者链接与详情链接嵌套。
 - 新增 `/topics` 和 `/topics/:slug`。Topic 由现有文章 `category` 自动生成，支持语言选择、canonical、hreflang、CollectionPage/ItemList JSON-LD 和空状态。

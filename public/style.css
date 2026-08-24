@@ -169,9 +169,9 @@ body.image-lightbox-open { overflow: hidden; }
 .post-item h2 a::after { content: "→"; opacity: 0; margin-left: 0; transition: .2s; }
 .post-item h2 a:hover::after { opacity: 1; margin-left: 10px; }
 .post-item p { margin: 14px 0 1em; color: var(--text); }
-.home-introduction { margin-top: 54px; padding: 30px 0 8px; border-top: 1px solid var(--line); }
+.home-introduction { margin-top: 54px; padding: 30px 0 8px; border-top: 1px solid var(--line); text-align: right; }
 .home-introduction h2 { margin: 0; color: var(--strong); font-size: 17px; letter-spacing: .01em; }
-.home-introduction p { max-width: 640px; margin: 14px 0 10px; color: var(--light); font-size: 15px; line-height: 1.7; }
+.home-introduction p { max-width: 640px; margin: 14px 0 10px auto; color: var(--light); font-size: 15px; line-height: 1.7; }
 .home-introduction a { color: var(--text); font-size: 13px; text-underline-offset: 4px; }
 .related-posts { margin-top: 48px; padding-top: 22px; border-top: 1px solid var(--line); }
 .related-posts ul { margin: 15px 0 0; padding: 0; list-style: none; }
