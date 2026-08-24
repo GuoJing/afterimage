@@ -26,24 +26,24 @@
       <% if (mode === 'login') { %>
         <form class="account-form" action="/account/login" method="post" data-account-form>
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
-          <label><span class="field-label"><%= copy.identifier %><span class="field-required"><%= copy.required %></span></span><input name="identifier" value="<%= fields.identifier || '' %>" autocomplete="username" maxlength="254" autofocus required></label>
-          <label><span class="field-label"><%= copy.password %><span class="field-required"><%= copy.required %></span></span><input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
+          <label><span class="field-label"><%= copy.identifier %><span class="field-required" aria-hidden="true">*</span></span><input name="identifier" value="<%= fields.identifier || '' %>" autocomplete="username" maxlength="254" autofocus required></label>
+          <label><span class="field-label"><%= copy.password %><span class="field-required" aria-hidden="true">*</span></span><input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
           <button class="primary" type="submit" data-submit-label="…"><%= copy.loginButton %></button>
           <% if (passwordReset) { %><p class="form-success"><%= copy.resetSuccess %></p><% } %>
           <p class="account-switch"><a href="<%= accountUrl %>&mode=forgot"><%= copy.forgotPassword %></a></p>
         </form>
       <% } else if (mode === 'register') { %>
-        <form class="account-form" action="/account/register" method="post" enctype="multipart/form-data" data-account-form data-registration-form data-code-url="/account/register/code" data-resend-seconds="<%= retryAfterSeconds %>" data-resend-label="<%= copy.sendCode %>" data-resend-countdown="<%= copy.secondsUntilResend('__SECONDS__') %>">
+        <form class="account-form" action="/account/register" method="post" enctype="multipart/form-data" data-account-form data-registration-form data-code-url="/account/register/code" data-resend-seconds="<%= retryAfterSeconds %>" data-resend-label="<%= copy.sendCode %>" data-resend-countdown="<%= copy.secondsUntilResend('__SECONDS__') %>" data-avatar-empty-label="<%= copy.noFileChosen %>">
           <p class="membership-promo"><%= copy.memberPromo %></p>
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
-          <label><span class="field-label"><%= copy.username %><span class="field-required"><%= copy.required %></span></span><input name="username" value="<%= fields.username || '' %>" autocomplete="username" pattern="[A-Za-z]{3,32}" minlength="3" maxlength="32" required><small><%= copy.usernameHint %></small></label>
-          <label><span class="field-label"><%= copy.nickname %><span class="field-required"><%= copy.required %></span></span><input name="nickname" value="<%= fields.nickname || '' %>" autocomplete="nickname" maxlength="64" required></label>
-          <label><span class="field-label"><%= copy.email %><span class="field-required"><%= copy.required %></span></span><input name="email" type="email" value="<%= fields.email || '' %>" autocomplete="email" maxlength="254" required></label>
-          <label><span class="field-label"><%= copy.password %><span class="field-required"><%= copy.required %></span></span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><small><%= copy.passwordHint %></small></label>
-          <label><span class="field-label"><%= copy.passwordConfirm %><span class="field-required"><%= copy.required %></span></span><input name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
-          <label><%= copy.avatar %><input name="avatar" type="file" accept="image/jpeg,image/png,image/webp,image/avif" data-avatar-input><small><%= copy.avatarHint %></small></label>
+          <label><span class="field-label"><%= copy.username %><span class="field-required" aria-hidden="true">*</span></span><input name="username" value="<%= fields.username || '' %>" autocomplete="username" pattern="[A-Za-z]{3,32}" minlength="3" maxlength="32" required><small><%= copy.usernameHint %></small></label>
+          <label><span class="field-label"><%= copy.nickname %><span class="field-required" aria-hidden="true">*</span></span><input name="nickname" value="<%= fields.nickname || '' %>" autocomplete="nickname" maxlength="64" required></label>
+          <label><span class="field-label"><%= copy.email %><span class="field-required" aria-hidden="true">*</span></span><input name="email" type="email" value="<%= fields.email || '' %>" autocomplete="email" maxlength="254" required></label>
+          <label><span class="field-label"><%= copy.password %><span class="field-required" aria-hidden="true">*</span></span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><small><%= copy.passwordHint %></small></label>
+          <label><span class="field-label"><%= copy.passwordConfirm %><span class="field-required" aria-hidden="true">*</span></span><input name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+          <label><%= copy.avatar %><span class="avatar-file-field"><input name="avatar" type="file" accept="image/jpeg,image/png,image/webp,image/avif" data-avatar-input><span class="avatar-file-button"><%= copy.chooseFile %></span><span class="avatar-file-name" data-avatar-name><%= copy.noFileChosen %></span></span><small><%= copy.avatarHint %></small></label>
           <div class="registration-code-row">
-            <label><span class="field-label"><%= copy.code %><span class="field-required"><%= copy.required %></span></span><input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required></label>
+            <label><span class="field-label"><%= copy.code %><span class="field-required" aria-hidden="true">*</span></span><input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" required></label>
             <button type="button" data-send-registration-code data-sending-label="<%= copy.sendingCode %>" <%= registrationAvailable ? '' : 'disabled' %>><%= copy.sendCode %></button>
           </div>
           <p class="registration-code-status" data-registration-code-status aria-live="polite"><%= registrationAvailable ? '' : copy.errors.MAIL_UNAVAILABLE %></p>
@@ -55,7 +55,7 @@
           <p class="account-lead"><%= copy.forgotLead %></p>
           <% if (resetRequestSent) { %><p class="form-success"><%= copy.resetSent %></p><% } %>
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
-          <label><span class="field-label"><%= copy.email %><span class="field-required"><%= copy.required %></span></span><input name="email" type="email" value="<%= fields.email || '' %>" autocomplete="email" maxlength="254" autofocus required></label>
+          <label><span class="field-label"><%= copy.email %><span class="field-required" aria-hidden="true">*</span></span><input name="email" type="email" value="<%= fields.email || '' %>" autocomplete="email" maxlength="254" autofocus required></label>
           <button class="primary" type="submit" data-submit-label="…" <%= passwordResetAvailable ? '' : 'disabled' %>><%= copy.sendResetLink %></button>
           <p class="account-switch"><a href="<%= accountUrl %>"><%= copy.backToLogin %></a></p>
         </form>
@@ -65,8 +65,8 @@
           <p class="account-lead"><%= copy.resetLead %></p>
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
           <% if (resetAvailable) { %>
-            <label><span class="field-label"><%= copy.newPassword %><span class="field-required"><%= copy.required %></span></span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" autofocus required><small><%= copy.passwordHint %></small></label>
-            <label><span class="field-label"><%= copy.passwordConfirm %><span class="field-required"><%= copy.required %></span></span><input name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+            <label><span class="field-label"><%= copy.newPassword %><span class="field-required" aria-hidden="true">*</span></span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" autofocus required><small><%= copy.passwordHint %></small></label>
+            <label><span class="field-label"><%= copy.passwordConfirm %><span class="field-required" aria-hidden="true">*</span></span><input name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
             <button class="primary" type="submit" data-submit-label="…"><%= copy.resetButton %></button>
           <% } %>
           <p class="account-switch"><a href="<%= accountUrl %>"><%= copy.backToLogin %></a></p>

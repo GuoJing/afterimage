@@ -3083,7 +3083,7 @@ function accountCopy(locale) {
   if (String(locale).startsWith('ja')) return {
     login: 'ログイン', register: '新規登録', account: 'アカウント', logout: 'ログアウト',
     loginLead: 'メールアドレスまたはログイン名でログイン', identifier: 'メールアドレスまたはログイン名', password: 'パスワード', loginButton: 'ログイン',
-    required: '必須', memberPromo: 'AFTERIMAGE のメンバーになると、会員向けのお知らせやサイトの最新情報を確認でき、新しい記事、写真プロジェクト、厳選したコンテンツを定期メールで受け取れます。',
+    chooseFile: '画像を選択', noFileChosen: '選択されていません', memberPromo: 'AFTERIMAGE のメンバーになると、会員向けのお知らせやサイトの最新情報を確認でき、新しい記事、写真プロジェクト、厳選したコンテンツを定期メールで受け取れます。',
     forgotPassword: 'パスワードをお忘れですか？', forgotTitle: 'パスワードを忘れた場合', forgotLead: '登録済みのメールアドレスへ再設定リンクを送信します。', sendResetLink: '再設定リンクを送信', resetSent: '登録済みの場合、再設定リンクを送信しました。メールをご確認ください。',
     resetTitle: 'パスワードを再設定', resetLead: '新しい安全なパスワードを入力してください。', newPassword: '新しいパスワード', resetButton: 'パスワードを変更', resetSuccess: 'パスワードを変更しました。新しいパスワードでログインしてください。',
     noAccount: 'アカウントをお持ちでないですか？', createAccount: '新規登録', haveAccount: 'すでにアカウントをお持ちですか？', backToLogin: 'ログインへ',
@@ -3098,7 +3098,7 @@ function accountCopy(locale) {
   if (String(locale).startsWith('en')) return {
     login: 'Login', register: 'Register', account: 'Account', logout: 'Log out',
     loginLead: 'Sign in with your email or login name', identifier: 'Email or login name', password: 'Password', loginButton: 'Login',
-    required: 'Required', memberPromo: 'Join AFTERIMAGE to follow member news and site updates, discover new stories and photography projects, and receive occasional curated emails.',
+    chooseFile: 'Choose image', noFileChosen: 'No image selected', memberPromo: 'Join AFTERIMAGE to follow member news and site updates, discover new stories and photography projects, and receive occasional curated emails.',
     forgotPassword: 'Forgot your password?', forgotTitle: 'Forgot password', forgotLead: 'We will send a reset link to your registered email address.', sendResetLink: 'Send reset link', resetSent: 'If that address is registered, a reset link has been sent. Check your email.',
     resetTitle: 'Reset password', resetLead: 'Choose a new, secure password.', newPassword: 'New password', resetButton: 'Change password', resetSuccess: 'Your password was changed. Log in with your new password.',
     noAccount: 'No account yet?', createAccount: 'Create one', haveAccount: 'Already have an account?', backToLogin: 'Back to login',
@@ -3113,7 +3113,7 @@ function accountCopy(locale) {
   return {
     login: '登录', register: '注册', account: '会员中心', logout: '退出登录',
     loginLead: '使用邮箱或登录名登录', identifier: '邮箱或登录名', password: '密码', loginButton: '登录',
-    required: '必填', memberPromo: '成为 AFTERIMAGE 会员，可以查看会员消息和站点动态，及时了解新文章、摄影项目与精选内容，并定期收到会员邮件。',
+    chooseFile: '选择图片', noFileChosen: '未选择图片', memberPromo: '成为 AFTERIMAGE 会员，可以查看会员消息和站点动态，及时了解新文章、摄影项目与精选内容，并定期收到会员邮件。',
     forgotPassword: '忘记密码？', forgotTitle: '忘记密码', forgotLead: '我们会向注册邮箱发送密码重置链接。', sendResetLink: '发送重置链接', resetSent: '如果该邮箱已经注册，重置链接已发送，请检查邮件。',
     resetTitle: '重新设置密码', resetLead: '请输入一个新的安全密码。', newPassword: '新密码', resetButton: '修改密码', resetSuccess: '密码已经修改，请使用新密码登录。',
     noAccount: '还没有账号？', createAccount: '立即注册', haveAccount: '已经有账号？', backToLogin: '返回登录',

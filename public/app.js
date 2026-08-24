@@ -120,6 +120,7 @@ function initializeRegistrationForm(form) {
   const emailInput = form.querySelector('input[name="email"]');
   const csrfInput = form.querySelector('input[name="csrf"]');
   const avatarInput = form.querySelector('[data-avatar-input]');
+  const avatarName = form.querySelector('[data-avatar-name]');
   const status = form.querySelector('[data-registration-code-status]');
   const storageKey = 'afterimage-registration-code-next-send';
   let nextSendAt = Date.now() + Math.max(0, Number(form.dataset.resendSeconds) || 0) * 1000;
@@ -179,9 +180,11 @@ function initializeRegistrationForm(form) {
 
   avatarInput?.addEventListener('change', () => {
     const file = avatarInput.files?.[0];
-    if (!file || file.size <= 1024 * 1024) return;
-    avatarInput.value = '';
-    status.textContent = avatarInput.closest('label')?.querySelector('small')?.textContent || '';
+    if (file && file.size > 1024 * 1024) {
+      avatarInput.value = '';
+      status.textContent = avatarInput.closest('label')?.querySelector('small')?.textContent || '';
+    }
+    if (avatarName) avatarName.textContent = avatarInput.files?.[0]?.name || form.dataset.avatarEmptyLabel;
   });
 }
 
