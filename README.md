@@ -194,6 +194,8 @@ SMTP_PASSWORD=your-fastmail-app-password
 MAIL_FROM_ADDRESS=you@example.com
 MAIL_FROM_NAME=AFTERIMAGE PHOTOGRAPHY
 # MAIL_REPLY_TO=you@example.com
+# 新会员注册通知收件地址；不填写时使用 ADMIN_2FA_EMAIL
+MEMBER_REGISTRATION_NOTIFY_EMAIL=private-admin@example.com
 ```
 
 先验证 SMTP 连接、TLS 和身份认证，不发送邮件：
@@ -250,7 +252,7 @@ ADMIN_2FA_EMAIL=private-admin@example.com
 
 - 登录名：必填，只允许 3–32 位英文字母，统一按小写保存且不区分大小写。
 - 邮箱：必填、唯一，用于接收注册验证码。
-- 昵称：必填，1–64 个字符。
+- 昵称：必填，最多 20 个 Unicode 字符，支持中文、英文和日文。
 - 密码及确认密码：必填且必须一致；至少 12 位，同时包含大小写字母、数字和符号，并且不能包含登录名、邮箱名称或常见弱密码片段。
 - 头像：可选，仅支持服务端验证后的 JPEG、PNG、WebP、AVIF，最大 1 MiB。
 - 会员等级：数据库字段 `membership_level`，默认值为 `0`，留给后续文章访问等级使用。
@@ -258,6 +260,8 @@ ADMIN_2FA_EMAIL=private-admin@example.com
 密码使用 Node.js `scrypt`、独立随机盐和固定安全参数生成不可逆哈希，数据库不保存明文密码。不存在的账号同样执行一次 scrypt，降低通过响应耗时判断账号是否存在的风险。
 
 注册验证码由后端通过 SMTP 发送，5 分钟失效，成功使用后立即销毁，连续错误 5 次也会销毁。验证码在内存中只保存 HMAC 摘要。前端和后端都要求至少间隔 2 分钟才能重新发送；后端同时按 IP、邮箱和全站总量限流。注册、登录提交均带会话 CSRF，并在认证成功时轮换 Session ID。
+
+每次会员注册成功后，系统会向 `MEMBER_REGISTRATION_NOTIFY_EMAIL` 发送审核通知；未单独配置时沿用 `ADMIN_2FA_EMAIL`。邮件包含登录名、昵称、邮箱、注册时间以及仅管理员可访问的用户编辑链接，方便及时审核并封禁不合规账号。通知发送失败只会记录服务端错误，不会造成用户账号重复创建。
 
 头像沿用 `IMAGE_STORAGE` 配置。本地存储路径为 `IMAGE_UPLOAD_DIR/IMAGE_PREFIX/avatars/年/月/文件名`；Spaces 模式使用相同 object key 并返回 CDN 地址。
 

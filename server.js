@@ -11,7 +11,7 @@ import multer from 'multer';
 import sanitizeHtml from 'sanitize-html';
 import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
-import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
+import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,12 +19,17 @@ const port = Number(process.env.PORT || 3000);
 const adminBasePath = '/qiajigou';
 const siteUrl = normalizeSiteUrl(process.env.SITE_URL || 'https://afterimage.photography');
 assertMailConfiguration();
+const mailStatus = getMailStatus();
+const registrationNotificationEmail = normalizeEmail(process.env.MEMBER_REGISTRATION_NOTIFY_EMAIL || process.env.ADMIN_2FA_EMAIL);
+if (registrationNotificationEmail && !isMemberEmail(registrationNotificationEmail)) {
+  throw new Error('MEMBER_REGISTRATION_NOTIFY_EMAIL 必须是有效邮箱地址');
+}
 const adminLoginSecurity = createAdminLoginSecurity({
   recipient: process.env.ADMIN_2FA_EMAIL,
-  mailConfigured: getMailStatus().configured,
+  mailConfigured: mailStatus.configured,
 });
-const registrationSecurity = createRegistrationSecurity({ mailConfigured: getMailStatus().configured });
-const passwordResetSecurity = createPasswordResetSecurity({ mailConfigured: getMailStatus().configured });
+const registrationSecurity = createRegistrationSecurity({ mailConfigured: mailStatus.configured });
+const passwordResetSecurity = createPasswordResetSecurity({ mailConfigured: mailStatus.configured });
 if (process.env.NODE_ENV === 'production' && (!process.env.ADMIN_PASSWORD || !process.env.SESSION_SECRET)) {
   throw new Error('生产环境必须设置 ADMIN_PASSWORD 和 SESSION_SECRET');
 }
@@ -905,6 +910,14 @@ app.post('/account/register', consumeMemberRegistrationAttempt, parseAvatarUploa
     req.session.userSessionVersion = 0;
     req.session.memberCsrf = createLoginCsrf();
     await saveSession(req);
+    if (registrationNotificationEmail) {
+      const newUser = { id: Number(result.lastInsertRowid), username: fields.username, email: fields.email, nickname: fields.nickname };
+      setImmediate(() => sendRegistrationAdminNotification({
+        to: registrationNotificationEmail,
+        user: newUser,
+        reviewUrl: absoluteUrl(`${adminBasePath}/users/${newUser.id}/edit`),
+      }).catch(error => console.error('新会员注册通知邮件发送失败：', error)));
+    }
     res.redirect(`${accountUrl(res.locals.locale)}&registered=1`);
   } catch (error) {
     console.error('会员注册失败：', error);
@@ -1366,6 +1379,8 @@ app.listen(port, () => {
   if (adminLoginSecurity.ready) console.log('Admin 2FA: enabled');
   else console.warn(`Admin 2FA: login unavailable (${adminLoginSecurity.configurationError})`);
   console.log(`Member registration: ${registrationSecurity.ready ? 'enabled' : 'unavailable (mail disabled)'}`);
+  if (registrationNotificationEmail) console.log('Member registration notifications: enabled');
+  else console.warn('Member registration notifications: unavailable (set MEMBER_REGISTRATION_NOTIFY_EMAIL or ADMIN_2FA_EMAIL)');
   if (!process.env.ADMIN_PASSWORD) console.warn('警告：当前后台密码是 change-me-now，请在 .env 中设置 ADMIN_PASSWORD。');
   if (!process.env.SESSION_SECRET) console.warn('警告：未设置 SESSION_SECRET，服务重启后登录会话会失效。');
 });
@@ -2950,7 +2965,7 @@ function managedUserError(error) {
   const messages = {
     INVALID_MANAGED_USERNAME: '登录名只能使用 3–32 位英文字母。',
     INVALID_MANAGED_EMAIL: '请输入有效的邮箱地址。',
-    INVALID_MANAGED_NICKNAME: '昵称不能为空，且不能超过 64 个字符。',
+    INVALID_MANAGED_NICKNAME: '昵称不能为空，且不能超过 20 个字符。',
     INVALID_MANAGED_LEVEL: '会员等级只能选择 0–5。',
     INVALID_MANAGED_STATUS: '请选择有效的用户状态。',
     MANAGED_USERNAME_EXISTS: '这个登录名已经被使用。',
@@ -3092,7 +3107,7 @@ function accountCopy(locale) {
     code: '6桁の確認コード', sendCode: '確認コードを送信', sendingCode: '送信中…', codeSent: '確認コードを送信しました。5分以内に入力してください。', registerButton: '登録する',
     welcome: 'ようこそ', level: '会員レベル', registered: '登録が完了しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
     errors: {
-      EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜64文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、メール機能をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。', INVALID_RESET_TOKEN: 'この再設定リンクは無効、使用済み、または期限切れです。', RESET_FAILED: 'パスワードを変更できませんでした。後でもう一度お試しください。',
+      EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜20文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、メール機能をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。', INVALID_RESET_TOKEN: 'この再設定リンクは無効、使用済み、または期限切れです。', RESET_FAILED: 'パスワードを変更できませんでした。後でもう一度お試しください。',
     },
   };
   if (String(locale).startsWith('en')) return {
@@ -3107,7 +3122,7 @@ function accountCopy(locale) {
     code: '6-digit verification code', sendCode: 'Send code', sendingCode: 'Sending…', codeSent: 'Verification code sent. Enter it within 5 minutes.', registerButton: 'Create account',
     welcome: 'Welcome', level: 'Membership level', registered: 'Your account has been created.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
     errors: {
-      EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 64 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Email features are temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.', INVALID_RESET_TOKEN: 'This reset link is invalid, expired, or has already been used.', RESET_FAILED: 'The password could not be changed. Please try again later.',
+      EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 20 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Email features are temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.', INVALID_RESET_TOKEN: 'This reset link is invalid, expired, or has already been used.', RESET_FAILED: 'The password could not be changed. Please try again later.',
     },
   };
   return {
@@ -3122,7 +3137,7 @@ function accountCopy(locale) {
     code: '6 位邮箱验证码', sendCode: '发送验证码', sendingCode: '正在发送…', codeSent: '验证码已发送，请在 5 分钟内填写。', registerButton: '完成注册',
     welcome: '欢迎', level: '会员等级', registered: '账号注册成功。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
     errors: {
-      EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–64 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '邮件功能暂时不可用，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。', INVALID_RESET_TOKEN: '这个重置链接无效、已经使用或已经过期。', RESET_FAILED: '密码修改失败，请稍后再试。',
+      EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–20 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '邮件功能暂时不可用，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。', INVALID_RESET_TOKEN: '这个重置链接无效、已经使用或已经过期。', RESET_FAILED: '密码修改失败，请稍后再试。',
     },
   };
 }

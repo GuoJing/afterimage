@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from '../lib/member-security.js';
+import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from '../lib/member-security.js';
 
 test('会员字段与强密码规则', () => {
   const fields = validateMemberFields({
@@ -13,10 +13,34 @@ test('会员字段与强密码规则', () => {
   assert.equal(fields.username, 'alice');
   assert.equal(fields.email, 'alice@example.com');
   assert.equal(fields.nickname, '爱丽丝');
+  assert.equal(isMemberEmail('valid.reader+photo@example.co.jp'), true);
+  assert.equal(isMemberEmail('.invalid@example.com'), false);
+  assert.equal(isMemberEmail('invalid..reader@example.com'), false);
+  assert.equal(isMemberEmail('reader@example'), false);
+  assert.throws(() => validateMemberFields({ username: 'alice', email: 'not-an-email', nickname: 'A', password: 'Moonlight-Camera-2026!', passwordConfirm: 'Moonlight-Camera-2026!' }), { code: 'INVALID_EMAIL' });
+  assert.throws(() => validateMemberFields({ username: 'alice', email: 'a@example.com', nickname: '中'.repeat(21), password: 'Moonlight-Camera-2026!', passwordConfirm: 'Moonlight-Camera-2026!' }), { code: 'INVALID_NICKNAME' });
+  assert.equal(validateMemberFields({ username: 'alice', email: 'a@example.com', nickname: '📷'.repeat(20), password: 'Moonlight-Camera-2026!', passwordConfirm: 'Moonlight-Camera-2026!' }).nickname, '📷'.repeat(20));
   assert.throws(() => validateMemberFields({ username: 'alice1', email: 'a@example.com', nickname: 'A', password: 'Moonlight-Camera-2026!', passwordConfirm: 'Moonlight-Camera-2026!' }), { code: 'INVALID_USERNAME' });
   assert.throws(() => validateMemberFields({ username: 'alice', email: 'a@example.com', nickname: 'A', password: 'short', passwordConfirm: 'short' }), { code: 'WEAK_PASSWORD' });
   assert.throws(() => validateMemberFields({ username: 'alice', email: 'a@example.com', nickname: 'A', password: 'Password-2026!', passwordConfirm: 'Password-2026!' }), { code: 'WEAK_PASSWORD' });
   assert.throws(() => validateMemberFields({ username: 'alice', email: 'a@example.com', nickname: 'A', password: 'Safe-Password-2026!', passwordConfirm: 'different' }), { code: 'PASSWORD_MISMATCH' });
+});
+
+test('新会员注册通知只向配置的管理员邮箱发送安全审核信息', async () => {
+  const deliveries = [];
+  await sendRegistrationAdminNotification({
+    to: 'owner@example.com',
+    user: { id: 42, username: 'reader', email: 'reader@example.com', nickname: '<夜行者>' },
+    reviewUrl: 'https://afterimage.photography/qiajigou/users/42/edit',
+    registeredAt: new Date('2026-08-24T12:00:00.000Z'),
+    deliver: async message => deliveries.push(message),
+  });
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0].to, 'owner@example.com');
+  assert.match(deliveries[0].text, /reader@example\.com/);
+  assert.match(deliveries[0].text, /qiajigou\/users\/42\/edit/);
+  assert.doesNotMatch(deliveries[0].html, /<夜行者>/);
+  assert.match(deliveries[0].html, /&lt;夜行者&gt;/);
 });
 
 test('密码使用带随机盐的 scrypt 哈希并可安全验证', async () => {
@@ -84,6 +108,7 @@ test('后台用户资料严格限制状态和 0–5 会员等级', () => {
     username: 'reader', email: 'reader@example.com', nickname: '读者', membership_level: 5, status: 'disabled',
   });
   assert.throws(() => validateManagedUserFields({ username: 'reader1', email: 'reader@example.com', nickname: '读者', membership_level: 0, status: 'active' }), { code: 'INVALID_MANAGED_USERNAME' });
+  assert.throws(() => validateManagedUserFields({ username: 'reader', email: 'reader@example.com', nickname: '日'.repeat(21), membership_level: 0, status: 'active' }), { code: 'INVALID_MANAGED_NICKNAME' });
   assert.throws(() => validateManagedUserFields({ username: 'reader', email: 'reader@example.com', nickname: '读者', membership_level: 6, status: 'active' }), { code: 'INVALID_MANAGED_LEVEL' });
   assert.throws(() => validateManagedUserFields({ username: 'reader', email: 'reader@example.com', nickname: '读者', membership_level: 0, status: 'blocked' }), { code: 'INVALID_MANAGED_STATUS' });
 });

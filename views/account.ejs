@@ -37,7 +37,7 @@
           <p class="membership-promo"><%= copy.memberPromo %></p>
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
           <label><span class="field-label"><%= copy.username %><span class="field-required" aria-hidden="true">*</span></span><input name="username" value="<%= fields.username || '' %>" autocomplete="username" pattern="[A-Za-z]{3,32}" minlength="3" maxlength="32" required><small><%= copy.usernameHint %></small></label>
-          <label><span class="field-label"><%= copy.nickname %><span class="field-required" aria-hidden="true">*</span></span><input name="nickname" value="<%= fields.nickname || '' %>" autocomplete="nickname" maxlength="64" required></label>
+          <label><span class="field-label"><%= copy.nickname %><span class="field-required" aria-hidden="true">*</span></span><input name="nickname" value="<%= fields.nickname || '' %>" autocomplete="nickname" maxlength="20" required></label>
           <label><span class="field-label"><%= copy.email %><span class="field-required" aria-hidden="true">*</span></span><input name="email" type="email" value="<%= fields.email || '' %>" autocomplete="email" maxlength="254" required></label>
           <label><span class="field-label"><%= copy.password %><span class="field-required" aria-hidden="true">*</span></span><input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><small><%= copy.passwordHint %></small></label>
           <label><span class="field-label"><%= copy.passwordConfirm %><span class="field-required" aria-hidden="true">*</span></span><input name="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
