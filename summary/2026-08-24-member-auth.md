@@ -62,6 +62,7 @@ sqlite3 /opt/afterimage/data/blog.db
 - 不信任扩展名或浏览器 MIME，服务端检查实际文件签名。
 - 仅允许 JPEG、PNG、WebP、AVIF；拒绝 SVG 和动画 GIF。
 - 本地或 Spaces 均存入 `IMAGE_PREFIX/avatars/年/月/文件名`。
+- 登录后，公共页面右上角会在昵称前显示 28px 圆形头像；没有头像时使用黑底白字并显示昵称的首个 Unicode 字符，图片使用 `object-fit: cover` 裁切。
 
 ## 部署要求
 
