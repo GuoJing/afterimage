@@ -322,6 +322,12 @@ label { display:block; color:var(--strong); font-size:14px; font-weight:600; }
 input, textarea, select { width:100%; margin-top:7px; padding:10px 11px; border:1px solid var(--line); border-radius:6px; color:var(--strong); background:var(--bg); outline:none; }
 input:focus, textarea:focus, select:focus { border-color:var(--light); box-shadow:0 0 0 3px var(--line); }
 .login-form button { width:100%; margin-top:18px; }
+.login-help { margin: -10px 0 22px; color: var(--light); font-size: 14px; line-height: 1.6; }
+.login-code { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: .35em; text-align: center; }
+.login-countdown { min-height: 20px; margin: 12px 0 0; color: var(--light); font-size: 13px; text-align: center; }
+.login-reset { width: 100%; margin-top: -44px; padding: 0 24px 24px; }
+.login-reset button { width: 100%; border: 0; color: var(--light); background: transparent; }
+button:disabled { cursor: not-allowed; opacity: .55; }
 .post-list { padding:0; overflow:hidden; }
 .admin-post { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:18px 20px; color:var(--text); text-decoration:none; border-bottom:1px solid var(--line); }
 .admin-post:last-child { border-bottom:0; }

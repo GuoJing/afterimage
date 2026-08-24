@@ -176,6 +176,71 @@ Spaces 中的 object key 同样是 `IMAGE_PREFIX/年/月/文件名`。`SPACES_PU
 
 文章详情页中的正文图片可点击放大；灯箱使用半透明黑色背景，可点击右上角关闭按钮、遮罩空白区域或按 `Esc` 关闭。大图最大为视口宽度的 80% 和视口高度的 86%，小图不会被强制放大。
 
+## 邮件发送（Fastmail）
+
+应用内置通用 SMTP 邮件模块，默认关闭，不会影响网站启动。Fastmail 标准配置使用 `smtp.fastmail.com` 的 465 端口和直接 TLS；登录账号填写完整邮箱地址，密码必须使用 Fastmail 后台生成的 App Password，不能填写日常登录密码。具体参数见 [Fastmail 官方服务器配置](https://www.fastmail.help/hc/en-us/articles/1500000278342-Server-names-and-ports)。
+
+按照 [Fastmail App Password 指南](https://www.fastmail.help/hc/en-us/articles/360058752854-App-passwords)，在 `Settings → Privacy & Security → Connected apps & API tokens → Manage app passwords and access` 中新建 App Password，然后在服务器 `.env` 增加：
+
+```env
+MAIL_ENABLED=1
+SMTP_HOST=smtp.fastmail.com
+SMTP_PORT=465
+SMTP_SECURE=1
+SMTP_AUTH_METHOD=PLAIN
+SMTP_USER=you@example.com
+SMTP_PASSWORD=your-fastmail-app-password
+MAIL_FROM_ADDRESS=you@example.com
+MAIL_FROM_NAME=AFTERIMAGE PHOTOGRAPHY
+# MAIL_REPLY_TO=you@example.com
+```
+
+先验证 SMTP 连接、TLS 和身份认证，不发送邮件：
+
+```bash
+npm run mail:verify
+```
+
+再向指定地址发送一封测试邮件：
+
+```bash
+npm run mail:test -- recipient@example.com
+```
+
+业务代码需要发信时，从 `lib/mailer.js` 导入 `sendMail({ to, subject, text, html, replyTo })`。发件人固定取服务端配置，调用方不能覆盖 SMTP 凭据或发件人。
+
+[DigitalOcean 官方说明](https://docs.digitalocean.com/support/why-is-smtp-blocked/)指出 Droplet 默认封锁 25、465 和 587 出站端口。Fastmail 官方同时提供可使用任意端口的 TLS 代理；因此在 DigitalOcean 上推荐把上面的三项改为：
+
+```env
+SMTP_HOST=smtps-proxy.fastmail.com
+SMTP_PORT=443
+SMTP_SECURE=1
+```
+
+可先执行 `openssl s_client -connect smtps-proxy.fastmail.com:443 -servername smtps-proxy.fastmail.com -brief` 检查 TLS 连接，再运行 `npm run mail:verify` 验证身份。它是出站连接，不需要在服务器防火墙开放入站 443、465 或 587 端口。
+
+## 后台两步登录
+
+后台登录强制使用“管理员密码 + 邮件验证码”。验证码由服务器调用上述 SMTP 模块发送，收件地址仅存在 `.env`，不会下发到浏览器或写入页面源码：
+
+```env
+ADMIN_2FA_EMAIL=private-admin@example.com
+```
+
+必须同时正确配置 `MAIL_ENABLED=1` 及 SMTP 变量。邮件未配置完整时公开网站仍可正常运行，但后台登录会安全关闭，不会退回到仅密码登录。
+
+登录安全规则：
+
+- 密码正确后才发送随机 6 位数字验证码。
+- 验证码只在进程内存保存 HMAC 摘要，不保存明文，10 分钟后过期。
+- 验证码绑定发起登录的 IP，验证成功后立即删除，不能重复使用。
+- 单个验证码最多尝试 5 次；密码尝试、验证码验证、单 IP 发信及全站发信分别由后端限流。
+- 登录表单包含会话 CSRF，成功登录前后都会重新生成 Session ID。
+- 前端提交后立即禁用按钮，后端触发限流时页面显示重试倒计时。
+- 后台响应禁止浏览器及代理缓存，并使用 `no-referrer`，避免登录页信息进入外部请求。
+
+验证码存放在内存中，因此重启 Node.js 服务会使所有尚未使用的验证码立即失效，这是预期行为。
+
 ## SEO 与 AI 搜索
 
 - 每个已发布语言版本都有独立 canonical 和 `hreflang`。

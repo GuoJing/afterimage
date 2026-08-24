@@ -58,6 +58,44 @@ if (editorForm) initializeEditor(editorForm);
 const galleryEditor = document.querySelector('[data-gallery-editor]');
 if (galleryEditor) initializeGalleryEditor(galleryEditor);
 
+const loginForm = document.querySelector('[data-login-form]');
+if (loginForm) initializeLoginForm(loginForm);
+
+function initializeLoginForm(form) {
+  const submit = form.querySelector('button[type="submit"]');
+  const countdown = form.querySelector('[data-login-countdown]');
+  let remaining = Number(form.dataset.retryAfter) || 0;
+  let timer;
+
+  const updateCountdown = () => {
+    if (!countdown || remaining <= 0) {
+      if (submit) submit.disabled = false;
+      if (countdown) countdown.textContent = '';
+      if (timer) clearInterval(timer);
+      return;
+    }
+    if (submit) submit.disabled = true;
+    countdown.textContent = `${remaining} 秒后可以重试`;
+    remaining -= 1;
+  };
+  if (remaining > 0) {
+    updateCountdown();
+    timer = setInterval(updateCountdown, 1000);
+  }
+
+  form.addEventListener('submit', event => {
+    if (form.dataset.submitting === '1') {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.submitting = '1';
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = submit.dataset.submitLabel || '请稍候…';
+    }
+  });
+}
+
 function initializeEditor(form) {
   const tabs = form.querySelector('[data-tabs]');
   const panels = form.querySelector('[data-panels]');

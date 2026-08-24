@@ -8,12 +8,19 @@ import express from 'express';
 import session from 'express-session';
 import { Lexer, marked, Renderer } from 'marked';
 import sanitizeHtml from 'sanitize-html';
+import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
+import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const adminBasePath = '/qiajigou';
 const siteUrl = normalizeSiteUrl(process.env.SITE_URL || 'https://afterimage.photography');
+assertMailConfiguration();
+const adminLoginSecurity = createAdminLoginSecurity({
+  recipient: process.env.ADMIN_2FA_EMAIL,
+  mailConfigured: getMailStatus().configured,
+});
 if (process.env.NODE_ENV === 'production' && (!process.env.ADMIN_PASSWORD || !process.env.SESSION_SECRET)) {
   throw new Error('生产环境必须设置 ADMIN_PASSWORD 和 SESSION_SECRET');
 }
@@ -189,6 +196,8 @@ app.use((req, res, next) => {
   const isAdminPath = req.path === adminBasePath || req.path.startsWith(`${adminBasePath}/`);
   if (isAdminPath) {
     res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    res.set('Cache-Control', 'no-store');
+    res.set('Referrer-Policy', 'no-referrer');
   }
   res.locals.blog = blog;
   res.locals.siteUrl = siteUrl;
@@ -624,21 +633,82 @@ app.get('/language/:locale', (req, res) => {
 
 app.get(`${adminBasePath}/login`, (req, res) => {
   if (req.session.isAdmin) return res.redirect(adminBasePath);
-  res.render('admin/login', { error: null });
+  renderAdminLogin(req, res);
 });
 
-app.post(`${adminBasePath}/login`, (req, res) => {
+app.post(`${adminBasePath}/login`, async (req, res) => {
+  if (req.session.isAdmin) return res.redirect(adminBasePath);
+  if (!validLoginCsrf(req)) return renderAdminLogin(req, res.status(403), { error: '登录页面已过期，请刷新后重试。' });
+  if (!adminLoginSecurity.ready) return renderAdminLogin(req, res.status(503), { error: '登录暂时不可用，请稍后再试。' });
+
+  try {
+    adminLoginSecurity.consumePasswordAttempt(req.ip);
+  } catch (error) {
+    return handleLoginRateLimit(req, res, error);
+  }
+
   const supplied = String(req.body.password || '');
   const expected = process.env.ADMIN_PASSWORD || 'change-me-now';
-  if (!safeEqual(supplied, expected)) {
-    return res.status(401).render('admin/login', { error: '密码不正确' });
+  if (!safeSecretEqual(supplied, expected)) {
+    return renderAdminLogin(req, res.status(401), { error: '登录信息不正确。' });
   }
-  req.session.regenerate(error => {
-    if (error) return res.status(500).send('无法创建登录会话');
+
+  try {
+    await regenerateSession(req);
+    const challenge = await adminLoginSecurity.issueCode(req.ip);
+    req.session.pendingAdminChallenge = challenge.id;
+    req.session.loginCsrf = createLoginCsrf();
+    await saveSession(req);
+    res.redirect(`${adminBasePath}/login`);
+  } catch (error) {
+    if (error instanceof AdminLoginRateLimitError) return handleLoginRateLimit(req, res, error);
+    console.error('后台登录验证码发送失败：', error);
+    renderAdminLogin(req, res.status(502), { error: '验证码发送失败，请稍后再试。' });
+  }
+});
+
+app.post(`${adminBasePath}/login/code`, async (req, res) => {
+  if (req.session.isAdmin) return res.redirect(adminBasePath);
+  if (!validLoginCsrf(req)) return renderAdminLogin(req, res.status(403), { error: '登录页面已过期，请刷新后重试。' });
+
+  const challengeId = req.session.pendingAdminChallenge;
+  let result;
+  try {
+    result = adminLoginSecurity.verifyCode(challengeId, req.ip, req.body.code);
+  } catch (error) {
+    return handleLoginRateLimit(req, res, error);
+  }
+
+  if (result.status !== 'ok') {
+    if (['expired', 'locked', 'missing'].includes(result.status)) delete req.session.pendingAdminChallenge;
+    const error = result.status === 'invalid'
+      ? `验证码不正确${result.attemptsRemaining ? `，还可尝试 ${result.attemptsRemaining} 次` : ''}。`
+      : '验证码已失效，请重新输入密码登录。';
+    return renderAdminLogin(req, res.status(401), { error });
+  }
+
+  delete req.session.pendingAdminChallenge;
+  try {
+    await regenerateSession(req);
     req.session.isAdmin = true;
     req.session.csrf = crypto.randomBytes(24).toString('hex');
+    await saveSession(req);
     res.redirect(adminBasePath);
-  });
+  } catch {
+    res.status(500).send('无法创建登录会话');
+  }
+});
+
+app.post(`${adminBasePath}/login/reset`, async (req, res) => {
+  if (req.session.isAdmin) return res.redirect(adminBasePath);
+  if (!validLoginCsrf(req)) return renderAdminLogin(req, res.status(403), { error: '登录页面已过期，请刷新后重试。' });
+  adminLoginSecurity.invalidateChallenge(req.session.pendingAdminChallenge);
+  try {
+    await regenerateSession(req);
+    res.redirect(`${adminBasePath}/login`);
+  } catch {
+    res.status(500).send('无法重置登录会话');
+  }
 });
 
 app.post(`${adminBasePath}/logout`, requireAdmin, requireCsrf, (req, res) => {
@@ -922,6 +992,12 @@ app.use((req, res) => {
 app.listen(port, () => {
   console.log(`Afterimage Blog: http://localhost:${port}`);
   console.log(`Admin: http://localhost:${port}${adminBasePath}`);
+  const mailStatus = getMailStatus();
+  console.log(mailStatus.enabled
+    ? `Mail: ${mailStatus.host}:${mailStatus.port} (${mailStatus.secure ? 'TLS' : 'STARTTLS'})`
+    : 'Mail: disabled');
+  if (adminLoginSecurity.ready) console.log('Admin 2FA: enabled');
+  else console.warn(`Admin 2FA: login unavailable (${adminLoginSecurity.configurationError})`);
   if (!process.env.ADMIN_PASSWORD) console.warn('警告：当前后台密码是 change-me-now，请在 .env 中设置 ADMIN_PASSWORD。');
   if (!process.env.SESSION_SECRET) console.warn('警告：未设置 SESSION_SECRET，服务重启后登录会话会失效。');
 });
@@ -2382,6 +2458,56 @@ function safeEqual(a, b) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
   return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function safeSecretEqual(a, b) {
+  const left = crypto.createHash('sha256').update(String(a)).digest();
+  const right = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(left, right);
+}
+
+function createLoginCsrf() {
+  return crypto.randomBytes(24).toString('base64url');
+}
+
+function validLoginCsrf(req) {
+  const supplied = String(req.body?.csrf || '');
+  return Boolean(req.session.loginCsrf && safeEqual(supplied, req.session.loginCsrf));
+}
+
+function renderAdminLogin(req, res, { error = null, retryAfterSeconds = 0 } = {}) {
+  if (!req.session.loginCsrf) req.session.loginCsrf = createLoginCsrf();
+  const challengeId = req.session.pendingAdminChallenge;
+  const awaitingCode = adminLoginSecurity.hasActiveChallenge(challengeId);
+  if (!awaitingCode && challengeId) delete req.session.pendingAdminChallenge;
+  return res.render('admin/login', {
+    error,
+    stage: awaitingCode ? 'code' : 'password',
+    loginCsrf: req.session.loginCsrf,
+    retryAfterSeconds,
+  });
+}
+
+function handleLoginRateLimit(req, res, error) {
+  if (!(error instanceof AdminLoginRateLimitError)) throw error;
+  res.set('Retry-After', String(error.retryAfterSeconds));
+  return renderAdminLogin(req, res.status(429), {
+    error: `尝试次数过多，请在 ${formatRetryTime(error.retryAfterSeconds)}后重试。`,
+    retryAfterSeconds: error.retryAfterSeconds,
+  });
+}
+
+function formatRetryTime(seconds) {
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Math.ceil(seconds / 60)} 分钟`;
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => req.session.regenerate(error => error ? reject(error) : resolve()));
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
 }
 
 function friendlyError(error) {

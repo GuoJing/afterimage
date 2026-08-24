@@ -1,11 +1,25 @@
 <%- include('../partials/head', { pageTitle: 'Admin 登录', adminLayout: true }) %>
 <main class="admin-shell narrow">
-  <form class="panel login-form" action="<%= adminBasePath %>/login" method="post">
+  <form class="panel login-form" action="<%= adminBasePath %>/login<%= stage === 'code' ? '/code' : '' %>" method="post" data-login-form data-retry-after="<%= retryAfterSeconds || 0 %>">
     <p class="eyebrow">AFTERIMAGE ADMIN</p>
     <h1>登录</h1>
     <% if (error) { %><p class="form-error"><%= error %></p><% } %>
-    <label>密码<input name="password" type="password" autocomplete="current-password" autofocus required></label>
-    <button class="primary" type="submit">进入后台</button>
+    <input type="hidden" name="csrf" value="<%= loginCsrf %>">
+    <% if (stage === 'code') { %>
+      <p class="login-help">验证码已发送到管理员邮箱，10 分钟内有效。</p>
+      <label>6 位验证码<input class="login-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" autofocus required></label>
+      <button class="primary" type="submit" data-submit-label="验证中…">验证并登录</button>
+    <% } else { %>
+      <label>密码<input name="password" type="password" autocomplete="current-password" autofocus required></label>
+      <button class="primary" type="submit" data-submit-label="正在发送验证码…">继续</button>
+    <% } %>
+    <p class="login-countdown" data-login-countdown aria-live="polite"></p>
   </form>
+  <% if (stage === 'code') { %>
+    <form class="login-reset" action="<%= adminBasePath %>/login/reset" method="post">
+      <input type="hidden" name="csrf" value="<%= loginCsrf %>">
+      <button type="submit">重新输入密码</button>
+    </form>
+  <% } %>
 </main>
 <%- include('../partials/footer', { adminLayout: true }) %>
