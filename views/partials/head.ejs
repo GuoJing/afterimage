@@ -47,7 +47,7 @@
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <meta name="twitter:image:alt" content="<%= typeof ogImageAlt !== 'undefined' && ogImageAlt ? ogImageAlt : resolvedTitle %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
-  <link rel="stylesheet" href="/style.css?v=40">
+  <link rel="stylesheet" href="/style.css?v=41">
   <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
 <body class="<%= typeof adminLayout !== 'undefined' && adminLayout ? 'is-admin' : '' %>">
@@ -56,6 +56,7 @@
   <div class="head-inner">
     <a class="logo" href="/<%= langQuery %>"><img src="/apple-touch-icon.png" width="30" height="30" alt=""><span><%= blog.title %></span></a>
     <div class="head-actions">
+      <a class="account-link" href="<%= accountUrl %>"><%= currentUser ? currentUser.nickname : accountLabel %></a>
       <details class="language-menu">
         <summary aria-label="选择语言"><%= locale.toUpperCase() %></summary>
         <div class="language-popover">

@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env --watch server.js",
     "start": "node --env-file-if-exists=.env server.js",
-    "check": "node --check server.js && node --check lib/mailer.js && node --check lib/admin-login-security.js && node --check scripts/mail-test.js",
-    "test": "node --test test/admin-login-security.test.js",
+    "check": "node --check server.js && node --check lib/mailer.js && node --check lib/admin-login-security.js && node --check lib/member-security.js && node --check scripts/mail-test.js",
+    "test": "node --test test/*.test.js",
     "mail:verify": "node --env-file-if-exists=.env scripts/mail-test.js --verify",
     "mail:test": "node --env-file-if-exists=.env scripts/mail-test.js"
   },
@@ -22,6 +22,7 @@
     "express": "^5.1.0",
     "express-session": "^1.18.2",
     "marked": "^16.2.1",
+    "multer": "2.2.0",
     "nodemailer": "9.0.5",
     "sanitize-html": "2.17.7"
   }

@@ -61,6 +61,10 @@ if (galleryEditor) initializeGalleryEditor(galleryEditor);
 const loginForm = document.querySelector('[data-login-form]');
 if (loginForm) initializeLoginForm(loginForm);
 
+document.querySelectorAll('[data-account-form]').forEach(form => initializeAccountForm(form));
+const registrationForm = document.querySelector('[data-registration-form]');
+if (registrationForm) initializeRegistrationForm(registrationForm);
+
 function initializeLoginForm(form) {
   const submit = form.querySelector('button[type="submit"]');
   const countdown = form.querySelector('[data-login-countdown]');
@@ -93,6 +97,91 @@ function initializeLoginForm(form) {
       submit.disabled = true;
       submit.textContent = submit.dataset.submitLabel || '请稍候…';
     }
+  });
+}
+
+function initializeAccountForm(form) {
+  form.addEventListener('submit', event => {
+    if (form.dataset.submitting === '1') {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.submitting = '1';
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = submit.dataset.submitLabel || submit.textContent;
+    }
+  });
+}
+
+function initializeRegistrationForm(form) {
+  const sendButton = form.querySelector('[data-send-registration-code]');
+  const emailInput = form.querySelector('input[name="email"]');
+  const csrfInput = form.querySelector('input[name="csrf"]');
+  const avatarInput = form.querySelector('[data-avatar-input]');
+  const status = form.querySelector('[data-registration-code-status]');
+  const storageKey = 'afterimage-registration-code-next-send';
+  let nextSendAt = Date.now() + Math.max(0, Number(form.dataset.resendSeconds) || 0) * 1000;
+  let timer;
+
+  try { nextSendAt = Math.max(nextSendAt, Number(localStorage.getItem(storageKey)) || 0); } catch {}
+
+  const renderCooldown = () => {
+    const remaining = Math.max(0, Math.ceil((nextSendAt - Date.now()) / 1000));
+    if (!sendButton) return;
+    if (remaining > 0) {
+      sendButton.disabled = true;
+      sendButton.textContent = form.dataset.resendCountdown.replace('__SECONDS__', String(remaining));
+      return;
+    }
+    sendButton.disabled = false;
+    sendButton.textContent = form.dataset.resendLabel;
+    if (timer) clearInterval(timer);
+  };
+
+  if (nextSendAt > Date.now()) {
+    renderCooldown();
+    timer = setInterval(renderCooldown, 1000);
+  }
+
+  sendButton?.addEventListener('click', async () => {
+    if (!emailInput.reportValidity()) return;
+    sendButton.disabled = true;
+    sendButton.textContent = sendButton.dataset.sendingLabel;
+    status.textContent = '';
+    try {
+      const response = await fetch(form.dataset.codeUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: new URLSearchParams({ csrf: csrfInput.value, email: emailInput.value }),
+      });
+      const payload = await response.json();
+      status.textContent = payload.message || '';
+      const retryAfter = Math.max(0, Number(payload.retryAfterSeconds) || 0);
+      if (retryAfter > 0) {
+        nextSendAt = Date.now() + retryAfter * 1000;
+        try { localStorage.setItem(storageKey, String(nextSendAt)); } catch {}
+        if (timer) clearInterval(timer);
+        renderCooldown();
+        timer = setInterval(renderCooldown, 1000);
+      } else {
+        sendButton.disabled = false;
+        sendButton.textContent = form.dataset.resendLabel;
+      }
+    } catch {
+      status.textContent = '';
+      sendButton.disabled = false;
+      sendButton.textContent = form.dataset.resendLabel;
+    }
+  });
+
+  avatarInput?.addEventListener('change', () => {
+    const file = avatarInput.files?.[0];
+    if (!file || file.size <= 1024 * 1024) return;
+    avatarInput.value = '';
+    status.textContent = avatarInput.closest('label')?.querySelector('small')?.textContent || '';
   });
 }
 
