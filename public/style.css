@@ -337,6 +337,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .account-tabs a.active { color: var(--strong); background: var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
 .account-form h1 { margin: 0; color: var(--strong); font-size: 30px; }
 .account-lead { margin: 8px 0 26px; color: var(--light); font-size: 14px; }
+.field-label { display: flex; align-items: center; gap: 7px; }
+.field-required { display: inline-flex; align-items: center; min-height: 18px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--light); background: var(--bg-soft); font-size: 10px; font-weight: 600; line-height: 1; letter-spacing: .02em; }
+.membership-promo { margin: -2px 0 26px; padding: 14px 16px; border-left: 2px solid var(--strong); color: var(--light); background: var(--bg-soft); font-size: 13px; line-height: 1.7; }
 .account-form label + label { margin-top: 18px; }
 .account-form label small { display: block; margin-top: 6px; color: var(--light); font-size: 12px; font-weight: 400; line-height: 1.45; }
 .account-form > .primary { width: 100%; margin-top: 24px; }
