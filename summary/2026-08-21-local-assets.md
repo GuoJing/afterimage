@@ -2,7 +2,7 @@
 
 > 后续字体更新：CSS 已按原站恢复 `en-sans / sys-sans / cjk-sans / sys-serif / mono / font-base / font-text` 分层。页面外层文本与文章标题使用 `Source Sans Pro` 优先、项目内置 `Source Sans 3` 作为本地替代；文章正文使用系统字体和 CJK 字体链；不加载任何外站字体资源。
 
-> 旧站精确复核：根据 `afterimage.typlog.io/posts/deep` 使用的 Meguro 0.5.0 与 Yue 1.0.0 CSS，文章标题继承 `Source Sans Pro` 文本字体链，但 `.e-content.yue` 正文会切回系统/CJK 基础字体链。图片组上下边距为 `1.64em`，组内图片通过两侧 `3px` padding 形成 `6px` 间距，连续 gallery 使用 `margin-top:-1.5em` 压缩纵向空白。本项目已用本地 `.image-stack/.image-row` 等价实现，并同步中文强调、标题层级、引用、列表和图注规则；没有引用 Typlog 的 CSS、JS 或字体资源。
+> 旧站精确复核：根据 `afterimage.typlog.io/posts/deep` 使用的 Meguro 0.5.0 与 Yue 1.0.0 CSS，文章标题继承 `Source Sans Pro` 文本字体链，但 `.e-content.yue` 正文会切回系统/CJK 基础字体链。图片组上下边距为 `1.64em`，组内图片通过两侧 `3px` padding 形成 `6px` 间距，连续 gallery 原本使用 `margin-top:-1.5em` 压缩纵向空白。本项目沿用本地 `.image-stack/.image-row`，但后续根据当前页面视觉反馈取消了连续图片组的负外边距，并增加纵向图片间距；并排图片仍保持 6px 横向间距。正文继续同步中文强调、标题层级、引用、列表和图注规则，且没有引用 Typlog 的 CSS、JS 或字体资源。
 
 > 字重修正：旧站公共 CSS 对 `body` 使用 `text-rendering: optimizeLegibility`、WebKit antialiasing 和 Firefox grayscale；本项目现已同步。文章标题从错误的 `900` 调整为旧站实际呈现的 `700`，正文保持默认 `400`，只有 Logo 继续使用旧站规定的 `900`。
 

@@ -102,8 +102,8 @@ button, input, textarea, select { font: inherit; }
 :lang(zh) .prose em, :lang(zh-hans) .prose em, :lang(zh-hant) .prose em, :lang(ja) .prose em { font-style: normal; text-emphasis: filled dot var(--light); text-emphasis-position: under; }
 .prose em:lang(en) { font-style: italic; text-emphasis: none; }
 .prose img { display: block; max-width: 100%; height: auto; margin: 2em auto; }
-.prose .image-stack { display: grid; gap: 6px; margin: 1.64em auto; }
-.prose .image-stack + .image-stack { margin-top: -1.5em; }
+.prose .image-stack { display: grid; gap: clamp(18px, 2vw, 28px); margin: 1.64em auto; }
+.prose .image-stack + .image-stack { margin-top: 2em; }
 .prose .image-row { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 6px; }
 .prose .image-row img { flex: 1 1 0; min-width: 0; width: auto; max-width: 100%; height: auto; margin: 0; object-fit: contain; }
 .prose .image-row img:only-child { flex: 1 1 0; width: 100%; }
@@ -377,7 +377,8 @@ input:focus, textarea:focus, select:focus { border-color:var(--light); box-shado
   .admin-post-meta { align-items:flex-end; flex-direction:column; }
   .post-title-row { gap: 12px; }
   .post-languages { max-width: 42%; flex-wrap: wrap; justify-content: flex-end; }
-  .prose .image-stack, .prose .image-row { gap: 6px; }
+  .prose .image-stack { gap: 18px; }
+  .prose .image-row { gap: 6px; }
   .image-lightbox { padding: 24px; }
   .image-lightbox-previous { left: 10px; }
   .image-lightbox-next { right: 10px; }
