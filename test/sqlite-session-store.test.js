@@ -58,6 +58,16 @@ test('SQLite Session Store 支持续期且拒绝异常 Session ID', async t => {
   await assert.rejects(() => setSession(store, '', { cookie: {} }), /Session ID/);
 });
 
+test('SQLite Session Store 默认保存 30 天', async t => {
+  const db = new Database(':memory:');
+  const currentTime = Date.parse('2026-08-25T00:00:00.000Z');
+  const store = new SqliteSessionStore({ db, now: () => currentTime, cleanupIntervalMs: 60_000 });
+  t.after(() => { store.dispose(); db.close(); });
+  await setSession(store, 'thirty-days', { cookie: {}, userId: 9 });
+  const row = db.prepare('SELECT expires_at FROM sessions WHERE sid = ?').get('thirty-days');
+  assert.equal(row.expires_at, currentTime + 30 * 24 * 60 * 60 * 1000);
+});
+
 function setSession(store, sid, value) {
   return new Promise((resolve, reject) => store.set(sid, value, error => error ? reject(error) : resolve()));
 }

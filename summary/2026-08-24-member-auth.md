@@ -69,7 +69,7 @@ sqlite3 /opt/afterimage/data/blog.db
 
 - `SESSION_SECRET` 必须是稳定的随机值，部署和重启时不能重新生成或修改。
 - `DATABASE_PATH` 必须指向持久化磁盘。应用会自动创建 `sessions` 表和过期时间索引，无需手动执行迁移。
-- 会话默认 7 天过期；注销、Session ID 轮换、会员封禁和密码修改仍会按原有安全逻辑使对应身份失效。
+- 会话最长 30 天；会员登录表单的“30 天内记住我”默认勾选，取消勾选后 Cookie 在浏览器关闭时失效。注销、Session ID 轮换、会员封禁和密码修改仍会按原有安全逻辑使对应身份失效。
 
 会员注册复用 Fastmail SMTP 配置，不新增密钥：
 

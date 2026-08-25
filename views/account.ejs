@@ -28,6 +28,7 @@
           <input type="hidden" name="csrf" value="<%= memberCsrf %>">
           <label><span class="field-label"><%= copy.identifier %><span class="field-required" aria-hidden="true">*</span></span><input name="identifier" value="<%= fields.identifier || '' %>" autocomplete="username" maxlength="254" autofocus required></label>
           <label><span class="field-label"><%= copy.password %><span class="field-required" aria-hidden="true">*</span></span><input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
+          <label class="remember-field"><input name="remember" type="checkbox" value="1" <%= fields.remember !== false ? 'checked' : '' %>><span><%= copy.rememberMe %></span></label>
           <button class="primary" type="submit" data-submit-label="…"><%= copy.loginButton %></button>
           <% if (passwordReset) { %><p class="form-success"><%= copy.resetSuccess %></p><% } %>
           <p class="account-switch"><a href="<%= accountUrl %>&mode=forgot"><%= copy.forgotPassword %></a></p>
