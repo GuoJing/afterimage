@@ -9,11 +9,12 @@
 - 带语言的文章 URL：`/post/zh/deep`、`/post/en/deep`
 - 带语言的页面 URL：`/page/zh/about`、`/page/en/about`
 - 多语言文章归档：`/archive`、`/archive?lang=en`
+- 首页每页 10 篇文章，只有第一页首篇展示全文，其余展示标题与摘要
 - 多语言 RSS：`/feed.xml`、`/feed.xml?lang=en`
 - SQLite 存储，文章、页面及各自翻译分表
 - 中文为默认语言；内容 URL 明确包含语言，缺少该语言翻译时回退到默认语言
 - Admin 新建、编辑、发布、删除文章
-- 文章级作者与分类；作者默认 `GuoJing`，分类可以留空
+- 文章级作者与固定分类；作者默认 `GuoJing`，分类为 `Post`、`HOWILEARN`、`Interview`、`Friends`
 - Admin 新建、编辑、发布、删除独立页面
 - Gallery 后台管理：元数据、封面、照片上传、描述、拍摄时间与拖拽排序
 - 全局导航管理，支持自定义名称、URL、排序及当前/新页面打开

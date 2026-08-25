@@ -19,6 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
+const homePageSize = 10;
 const adminBasePath = '/qiajigou';
 const siteUrl = normalizeSiteUrl(process.env.SITE_URL || 'https://afterimage.photography');
 assertMailConfiguration();
@@ -58,6 +59,11 @@ const archiveCopy = {
   zh: { title: '归档', description: '按时间浏览所有已发布文章。' },
   en: { title: 'Archive', description: 'Browse all published posts by date.' },
   ja: { title: 'アーカイブ', description: '公開済みの記事を日付順に表示します。' },
+};
+const homePaginationCopy = {
+  zh: { previous: '上一页', next: '下一页', navigation: '文章分页', page: number => `第 ${number} 页` },
+  en: { previous: 'Previous', next: 'Next', navigation: 'Article pagination', page: number => `Page ${number}` },
+  ja: { previous: '前のページ', next: '次のページ', navigation: '記事のページナビゲーション', page: number => `${number}ページ` },
 };
 const galleryThemes = [
   { id: 'masonry', name: '瀑布流', description: '保留照片原始比例，自然向下排列。' },
@@ -272,6 +278,7 @@ app.use((req, res, next) => {
   res.locals.accountUrl = accountUrl(locale);
   res.locals.accountLabel = accountCopy(locale).login;
   res.locals.currentPath = req.path;
+  res.locals.languageSwitchPath = req.originalUrl;
   res.locals.canonicalUrl = absoluteUrl(req.path);
   res.locals.alternateUrls = [];
   res.locals.xDefaultUrl = null;
@@ -291,15 +298,25 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
+  const page = parseHomePage(req.query.page);
+  if (!page) return res.status(404).render('not-found');
   const selectedLocale = getSelectedLocale(req);
   const requestedLocale = parameterLocale(req);
   if (selectedLocale && selectedLocale !== requestedLocale) {
-    return res.redirect(302, homePath(selectedLocale));
+    return res.redirect(302, homePath(selectedLocale, page));
   }
-  const posts = getPublishedPosts(res.locals.locale);
-  const canonicalUrl = absoluteUrl(homePath(res.locals.locale));
-  const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(homePath(code)) }));
+  const totalPosts = countPublishedPosts(res.locals.locale);
+  const totalPages = Math.max(1, Math.ceil(totalPosts / homePageSize));
+  if (page > totalPages) return res.status(404).render('not-found');
+  const posts = getPublishedPosts(res.locals.locale, homePageSize, (page - 1) * homePageSize);
+  const canonicalUrl = absoluteUrl(homePath(res.locals.locale, page));
+  const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(homePath(code, page)) }));
   const homeSeo = seoCopy(res.locals.locale);
+  const paginationCopy = homePaginationCopy[res.locals.locale] || homePaginationCopy.en;
+  const documentTitle = page === 1 ? homeSeo.title : `${homeSeo.title} — ${paginationCopy.page(page)}`;
+  const description = page === 1 ? homeSeo.description : `${homeSeo.description} ${paginationCopy.page(page)}`;
+  const previousUrl = page > 1 ? homePath(res.locals.locale, page - 1) : null;
+  const nextUrl = page < totalPages ? homePath(res.locals.locale, page + 1) : null;
   const structuredData = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -309,7 +326,7 @@ app.get('/', (req, res) => {
         name: blog.title,
         description: homeSeo.description,
         inLanguage: res.locals.locale,
-        url: canonicalUrl,
+        url: absoluteUrl(homePath(res.locals.locale)),
         publisher: { '@id': `${absoluteUrl('/')}#organization` },
       },
       publisherStructuredData(),
@@ -321,11 +338,15 @@ app.get('/', (req, res) => {
     renderMarkdown,
     canonicalUrl,
     alternateUrls,
-    xDefaultUrl: absoluteUrl('/'),
+    xDefaultUrl: absoluteUrl(homePath(defaultLocale, page)),
+    previousUrl,
+    nextUrl,
     structuredData,
-    description: homeSeo.description,
-    documentTitle: homeSeo.title,
+    description,
+    documentTitle,
     homeSeo,
+    page,
+    paginationCopy,
   });
 });
 
@@ -1541,8 +1562,12 @@ function absoluteUrl(pathname) {
   return new URL(pathname, `${siteUrl}/`).toString();
 }
 
-function homePath(locale) {
-  return locale === defaultLocale ? '/' : `/?lang=${encodeURIComponent(locale)}`;
+function homePath(locale, page = 1) {
+  const params = new URLSearchParams();
+  if (locale !== defaultLocale) params.set('lang', locale);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `/?${query}` : '/';
 }
 
 function archivePath(locale) {
@@ -1577,6 +1602,13 @@ function preferredParameterizedLocale(req, res, pathname) {
 
 function parameterLocale(req) {
   return normalizeLocale(req.query.lang) || defaultLocale;
+}
+
+function parseHomePage(value) {
+  if (value === undefined) return 1;
+  if (Array.isArray(value) || !/^[1-9]\d*$/.test(String(value))) return null;
+  const page = Number(value);
+  return Number.isSafeInteger(page) ? page : null;
 }
 
 function archiveTitle(locale) {
@@ -2076,17 +2108,20 @@ function escapeMarkdownLabel(value) {
 }
 
 function localizePath(currentPath, locale) {
-  if (currentPath === '/account') return accountUrl(locale);
-  if (currentPath === '/account/reset') return accountResetUrl(locale);
-  if (currentPath === '/archive') return archivePath(locale);
-  if (currentPath === '/topics') return topicsPath(locale);
-  const topicMatch = currentPath.match(/^\/topics\/([^/]+)$/);
+  const currentUrl = new URL(currentPath, 'http://afterimage.local');
+  const pathname = currentUrl.pathname;
+  if (pathname === '/') return homePath(locale, parseHomePage(currentUrl.searchParams.get('page')) || 1);
+  if (pathname === '/account') return accountUrl(locale);
+  if (pathname === '/account/reset') return accountResetUrl(locale);
+  if (pathname === '/archive') return archivePath(locale);
+  if (pathname === '/topics') return topicsPath(locale);
+  const topicMatch = pathname.match(/^\/topics\/([^/]+)$/);
   if (topicMatch) return topicPath(topicMatch[1], locale);
-  if (/^\/galleries\/?$/.test(currentPath)) return '/galleries';
-  if (/^\/gallery\/[^/]+\/?$/.test(currentPath)) return currentPath.replace(/\/$/, '');
-  const postMatch = currentPath.match(/^\/post\/[^/]+\/([^/]+)$/);
+  if (/^\/galleries\/?$/.test(pathname)) return '/galleries';
+  if (/^\/gallery\/[^/]+\/?$/.test(pathname)) return pathname.replace(/\/$/, '');
+  const postMatch = pathname.match(/^\/post\/[^/]+\/([^/]+)$/);
   if (postMatch) return `/post/${encodeURIComponent(locale)}/${postMatch[1]}`;
-  const pageMatch = currentPath.match(/^\/page\/[^/]+\/([^/]+)$/);
+  const pageMatch = pathname.match(/^\/page\/[^/]+\/([^/]+)$/);
   if (pageMatch) return `/page/${encodeURIComponent(locale)}/${pageMatch[1]}`;
   return locale === defaultLocale ? '/' : `/?lang=${encodeURIComponent(locale)}`;
 }
@@ -2166,7 +2201,7 @@ function isImageOnlyParagraph(token) {
   );
 }
 
-function getPublishedPosts(locale) {
+function getPublishedPosts(locale, limit = homePageSize, offset = 0) {
   const rows = db.prepare(`
     SELECT p.*, COALESCE(chosen.title, fallback.title) AS title,
       COALESCE(chosen.summary, fallback.summary, '') AS summary,
@@ -2176,9 +2211,20 @@ function getPublishedPosts(locale) {
     LEFT JOIN post_translations chosen ON chosen.post_id = p.id AND chosen.locale = ?
     LEFT JOIN post_translations fallback ON fallback.post_id = p.id AND fallback.locale = ?
     WHERE p.status = 'published' AND COALESCE(chosen.id, fallback.id) IS NOT NULL
-    ORDER BY p.published_at DESC
-  `).all(defaultLocale, locale, locale, defaultLocale);
+    ORDER BY p.published_at DESC, p.id DESC
+    LIMIT ? OFFSET ?
+  `).all(defaultLocale, locale, locale, defaultLocale, limit, offset);
   return rows.map(withLocales);
+}
+
+function countPublishedPosts(locale) {
+  return Number(db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM posts p
+    LEFT JOIN post_translations chosen ON chosen.post_id = p.id AND chosen.locale = ?
+    LEFT JOIN post_translations fallback ON fallback.post_id = p.id AND fallback.locale = ?
+    WHERE p.status = 'published' AND COALESCE(chosen.id, fallback.id) IS NOT NULL
+  `).get(locale, defaultLocale).total);
 }
 
 function getPublishedPostsByExactLocale(locale) {

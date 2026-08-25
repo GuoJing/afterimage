@@ -1,6 +1,6 @@
 <%- include('partials/head', { documentTitle, description }) %>
 <main class="main inner home-page content-layout-page">
-  <% if (posts.length) { const featured = posts[0]; %>
+  <% if (posts.length && page === 1) { const featured = posts[0]; %>
     <article class="post featured standard-content" lang="<%= featured.rendered_locale %>">
       <h1><a href="<%= postUrl(featured.slug) %>"><%= featured.title %></a></h1>
       <div class="post-meta compact">
@@ -12,7 +12,9 @@
       <div class="prose"><%- renderMarkdown(featured.body) %></div>
     </article>
 
-    <% posts.slice(1).forEach(post => { %>
+  <% } %>
+
+  <% posts.slice(page === 1 ? 1 : 0).forEach(post => { %>
       <article class="post-item standard-content" lang="<%= post.rendered_locale %>">
         <h2><a href="<%= postUrl(post.slug) %>"><%= post.title %></a></h2>
         <div class="post-meta compact">
@@ -23,12 +25,17 @@
         </div>
         <p><%= post.summary || post.body.replace(/[#_*`>\[\]()!-]/g, '').slice(0, 180) %></p>
       </article>
-    <% }) %>
-  <% } %>
-  <section class="home-introduction standard-content" aria-labelledby="home-introduction-title">
+  <% }) %>
+
+  <% if (page === 1) { %><section class="home-introduction standard-content" aria-labelledby="home-introduction-title">
     <h2 id="home-introduction-title"><%= homeSeo.introductionTitle %></h2>
     <p><%= homeSeo.introduction %></p>
     <a href="/page/<%= locale %>/about"><%= homeSeo.aboutLink %></a>
-  </section>
+  </section><% } %>
+
+  <% if (previousUrl || nextUrl) { %><nav class="home-pagination standard-content" aria-label="<%= paginationCopy.navigation %>">
+    <% if (previousUrl) { %><a class="previous" rel="prev" href="<%= previousUrl %>">← <%= paginationCopy.previous %></a><% } %>
+    <% if (nextUrl) { %><a class="next" rel="next" href="<%= nextUrl %>"><%= paginationCopy.next %> →</a><% } %>
+  </nav><% } %>
 </main>
 <%- include('partials/footer') %>
