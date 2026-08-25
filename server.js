@@ -40,6 +40,7 @@ if (process.env.NODE_ENV === 'production' && !siteUrl.startsWith('https://')) {
 }
 const defaultLocale = normalizeLocale(process.env.DEFAULT_LOCALE || 'zh');
 const configuredLocales = [...new Set((process.env.BLOG_LOCALES || 'zh,en,ja').split(',').map(normalizeLocale).filter(Boolean))];
+const defaultPostEditorLocales = ['zh', 'en', 'ja'];
 if (!defaultLocale) throw new Error('DEFAULT_LOCALE 不是有效的语言代码');
 if (!configuredLocales.includes(defaultLocale)) configuredLocales.unshift(defaultLocale);
 
@@ -2307,7 +2308,7 @@ function emptyPost() {
     published_at: new Date().toISOString().slice(0, 16),
     author: 'GuoJing',
     category: '',
-    translationList: [{ locale: defaultLocale, title: '', summary: '', body: '' }],
+    translationList: defaultPostEditorLocales.map(locale => ({ locale, title: '', summary: '', body: '' })),
   };
 }
 
