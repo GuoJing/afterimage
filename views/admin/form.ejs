@@ -69,7 +69,7 @@
             <label>状态<select name="status"><option value="draft" <%= post.status === 'draft' ? 'selected' : '' %>>草稿</option><option value="published" <%= post.status === 'published' ? 'selected' : '' %>>已发布</option></select></label>
             <label>发布日期<input name="published_at" type="datetime-local" value="<%= post.published_at ? new Date(post.published_at).toISOString().slice(0,16) : '' %>" required></label>
             <label>作者<input name="author" value="<%= post.author || 'GuoJing' %>" maxlength="100" placeholder="GuoJing"></label>
-            <label>分类<input name="category" value="<%= post.category || '' %>" maxlength="100" placeholder="可留空，例如 Photography"></label>
+            <label>分类<select name="category" required><% postCategoryOptions.forEach(category => { %><option value="<%= category %>" <%= post.category === category ? 'selected' : '' %>><%= category %></option><% }) %></select></label>
             <div class="inspector-actions">
               <% if (!isNew) { %><a class="button" target="_blank" href="/post/<%= editorTranslations[0].locale %>/<%= post.slug %>" data-view-content>查看文章 ↗</a><% } %>
               <button class="primary" type="submit">保存文章</button>

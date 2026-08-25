@@ -12,6 +12,7 @@ import sanitizeHtml from 'sanitize-html';
 import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
+import { normalizePostCategory, POST_CATEGORIES } from './lib/post-categories.js';
 import { SqliteSessionStore } from './lib/sqlite-session-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -263,6 +264,7 @@ app.use((req, res, next) => {
   res.locals.locales = configuredLocales.map(code => ({ code, name: languageName(code) }));
   res.locals.languageOptions = languageOptions;
   res.locals.languageName = languageName;
+  res.locals.postCategoryOptions = POST_CATEGORIES;
   res.locals.navigationItems = isAdminPath ? [] : getNavigationItems();
   res.locals.isNavigationActive = isNavigationActive;
   res.locals.adminBasePath = adminBasePath;
@@ -2307,7 +2309,7 @@ function emptyPost() {
     status: 'draft',
     published_at: new Date().toISOString().slice(0, 16),
     author: 'GuoJing',
-    category: '',
+    category: POST_CATEGORIES[0],
     translationList: defaultPostEditorLocales.map(locale => ({ locale, title: '', summary: '', body: '' })),
   };
 }
@@ -2353,9 +2355,9 @@ const persistPost = db.transaction((id, data) => {
   const status = data.status === 'published' ? 'published' : 'draft';
   const publishedAt = data.published_at ? new Date(data.published_at).toISOString() : new Date().toISOString();
   const author = String(data.author || '').trim() || 'GuoJing';
-  const category = String(data.category || '').trim();
+  const category = normalizePostCategory(data.category);
   if (author.length > 100) throw new Error('INVALID_AUTHOR');
-  if (category.length > 100) throw new Error('INVALID_CATEGORY');
+  if (!category) throw new Error('INVALID_CATEGORY');
   let postId = id;
   if (id) {
     db.prepare('UPDATE posts SET slug = ?, status = ?, published_at = ?, author = ?, category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(slug, status, publishedAt, author, category, id);
@@ -3202,7 +3204,7 @@ function friendlyError(error) {
   if (String(error.message).includes('UNIQUE constraint failed')) return '这个 URL 已经被使用';
   if (error.message === 'INVALID_SLUG') return 'URL 只能包含英文字母、数字、连字符和下划线';
   if (error.message === 'INVALID_AUTHOR') return '作者名称不能超过 100 个字符';
-  if (error.message === 'INVALID_CATEGORY') return '分类名称不能超过 100 个字符';
+  if (error.message === 'INVALID_CATEGORY') return '请选择有效的文章分类';
   if (error.message === 'INVALID_GALLERY_NAME') return 'Gallery 名称不能为空，且不能超过 160 个字符';
   if (error.message === 'INVALID_GALLERY_SLUG') return 'Gallery URL 只能包含英文字母、数字、连字符和下划线';
   if (error.message === 'INVALID_GALLERY_DESCRIPTION') return 'Gallery 描述不能超过 5000 个字符';
