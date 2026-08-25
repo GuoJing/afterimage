@@ -12,6 +12,7 @@ import sanitizeHtml from 'sanitize-html';
 import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
+import { SqliteSessionStore } from './lib/sqlite-session-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -220,9 +221,11 @@ if (imageStorage === 'local') {
   }, express.static(imageUploadDir, { maxAge: '1y', immutable: true, index: false, dotfiles: 'deny' }));
 }
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
+const sessionStore = new SqliteSessionStore({ db });
 app.use(session({
   name: 'afterimage.sid',
   secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -1379,6 +1382,7 @@ app.listen(port, () => {
   if (adminLoginSecurity.ready) console.log('Admin 2FA: enabled');
   else console.warn(`Admin 2FA: login unavailable (${adminLoginSecurity.configurationError})`);
   console.log(`Member registration: ${registrationSecurity.ready ? 'enabled' : 'unavailable (mail disabled)'}`);
+  console.log(`Sessions: SQLite (${databasePath})`);
   if (registrationNotificationEmail) console.log('Member registration notifications: enabled');
   else console.warn('Member registration notifications: unavailable (set MEMBER_REGISTRATION_NOTIFY_EMAIL or ADMIN_2FA_EMAIL)');
   if (!process.env.ADMIN_PASSWORD) console.warn('警告：当前后台密码是 change-me-now，请在 .env 中设置 ADMIN_PASSWORD。');

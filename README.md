@@ -48,6 +48,8 @@ npm run dev
 
 若没有设置 `ADMIN_PASSWORD`，开发环境临时密码是 `change-me-now`。生产环境缺少 `ADMIN_PASSWORD` 或 `SESSION_SECRET` 时会拒绝启动，避免把默认密码暴露到公网。
 
+会员和管理员登录状态保存在 `DATABASE_PATH` 指向的 SQLite 数据库中，Node.js 或 systemd 重启不会让尚未过期的登录状态失效。会话默认 7 天过期，注销会立即删除对应记录；过期记录会自动清理。`SESSION_SECRET` 必须长期保持不变，修改它会使已有 Cookie 的签名全部失效，这也是主动让所有人退出登录的方法。生产环境部署时还应保持 `DATABASE_PATH` 指向持久化磁盘，而不是临时目录。
+
 ## 多语言
 
 默认站点语言菜单显示中文、English 和日本語；每种语言使用自己的语言名称展示：
