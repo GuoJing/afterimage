@@ -8,7 +8,11 @@
         <h1><%= copy.welcome %> <%= currentUser.nickname %></h1>
         <p class="account-username">@<%= currentUser.username %></p>
         <% if (registered) { %><p class="form-success"><%= copy.registered %></p><% } %>
-        <dl class="account-meta"><div><dt><%= copy.level %></dt><dd><%= currentUser.membership_level %></dd></div></dl>
+        <dl class="account-meta">
+          <div><dt><%= copy.level %></dt><dd><%= currentUser.membership_level %></dd></div>
+          <div><dt><%= copy.joinedAt %></dt><dd><%= memberSince.date %></dd></div>
+        </dl>
+        <p class="account-tenure"><%= memberSince.duration %></p>
         <div class="account-profile-actions">
           <a class="button account-subscribe-link" href="/subscribe<%= langQuery %>"><%= subscribeCopyLabel %></a>
           <form action="/account/logout" method="post" data-account-form>

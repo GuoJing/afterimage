@@ -37,8 +37,8 @@
           <p>创建正常状态的用户后，系统会自动向该邮箱发送一次密码设置链接。管理员不会设置或看到用户密码。</p>
         <% } else { %>
           <dl class="user-admin-meta">
-            <div><dt>注册时间</dt><dd><%= user.created_at || '—' %></dd></div>
-            <div><dt>最后登录</dt><dd><%= user.last_login_at || '从未登录' %></dd></div>
+            <div><dt>注册时间</dt><dd><%= registeredAt || '—' %></dd></div>
+            <div><dt>最后登录</dt><dd><%= lastLoginAt || '从未登录' %></dd></div>
           </dl>
           <form action="<%= adminBasePath %>/users/<%= user.id %>/reset-password" method="post" data-account-form>
             <input type="hidden" name="csrf" value="<%= csrf %>">

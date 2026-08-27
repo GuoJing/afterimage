@@ -273,7 +273,7 @@ ADMIN_2FA_EMAIL=private-admin@example.com
 
 密码重置继续使用与注册相同的强密码规则和 scrypt 存储。成功修改后不会自动登录，并会增加用户的 `session_version`，从而让该账号的全部旧登录会话失效；系统还会向注册邮箱发送密码已修改通知。页面及邮件支持中文、English、日本語。重置邮件地址只根据 `SITE_URL` 生成，不读取请求的 Host；生产环境必须将它设为正确的 HTTPS 站点地址。
 
-应用启动时会自动创建 `users`、`password_reset_tokens` 表，并自动为旧 `users` 表增加 `session_version`，无需手动迁移。服务器位于反向代理后时应正确设置 `TRUST_PROXY=1` 并确保代理传递可信的客户端 IP，否则按 IP 的限流可能无法准确区分访客。
+应用启动时会自动创建 `users`、`password_reset_tokens` 表，并自动为旧 `users` 表增加 `session_version`，无需手动迁移。`users.created_at` 保存会员注册时间；后台用户列表和编辑页会显示格式化后的注册时间，会员中心会按当前语言显示注册日期与加入时长。服务器位于反向代理后时应正确设置 `TRUST_PROXY=1` 并确保代理传递可信的客户端 IP，否则按 IP 的限流可能无法准确区分访客。
 
 ### 后台用户管理
 
@@ -287,7 +287,7 @@ ADMIN_2FA_EMAIL=private-admin@example.com
 
 后台文章列表每篇文章都有独立“推送”入口。推送页面只列出账号正常且开启新文章推送的会员，并显示这篇文章是否已经成功送达、成功次数与最近发送时间。全量推送只处理尚未成功收到该文章的会员，重复点击会跳过已有成功记录；失败记录会在下一次群发时重试。管理员也可以在单个会员行执行强制重发，不提供全员强制发送。
 
-邮件根据会员保存订阅偏好时使用的语言选择文章翻译；不存在时回退默认语言，再回退文章的第一个可用翻译。邮件包含文章标题、摘要、正文、阅读全文链接、订阅设置链接和版权信息。只有已发布文章可以发送，草稿会被后台拒绝。应用启动时自动创建 `user_subscription_settings`、`user_subscription_opt_outs` 和 `post_email_deliveries` 表，并会把旧 `user_subscriptions` 表自动转换为新结构，无需手动执行 SQLite 迁移。
+邮件根据会员保存订阅偏好时使用的语言选择文章翻译；不存在时回退默认语言，再回退文章的第一个可用翻译。邮件包含文章标题、摘要、正文、阅读全文链接、订阅设置链接和版权信息。只有已发布文章可以发送，草稿会被后台拒绝。应用启动时自动创建 `user_subscription_settings`、`user_subscription_opt_outs` 和 `post_email_deliveries` 表，无需手动执行 SQLite 迁移。
 
 ## SEO 与 AI 搜索
 

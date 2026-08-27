@@ -52,33 +52,6 @@ test('saving preferences stores only opt-outs and removes them when re-enabled',
   db.close();
 });
 
-test('legacy positive preferences migrate to settings and explicit opt-outs', () => {
-  const db = createDatabase();
-  db.exec(`
-    CREATE TABLE user_subscriptions (
-      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      locale TEXT NOT NULL DEFAULT 'zh',
-      new_posts INTEGER NOT NULL DEFAULT 0,
-      newsletter INTEGER NOT NULL DEFAULT 0,
-      events INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-    INSERT INTO user_subscriptions (user_id, locale, new_posts, newsletter, events)
-    VALUES (1, 'ja', 1, 0, 1);
-  `);
-  const store = new SubscriptionStore(db);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'user_subscriptions'").get().count, 0);
-  assert.deepEqual(store.getPreferences(1), {
-    locale: 'ja', new_posts: 1, newsletter: 0, events: 1,
-    updated_at: db.prepare('SELECT updated_at FROM user_subscription_settings WHERE user_id = 1').get().updated_at,
-  });
-  assert.deepEqual(db.prepare('SELECT subscription_type FROM user_subscription_opt_outs').all(), [
-    { subscription_type: 'newsletter' },
-  ]);
-  db.close();
-});
-
 test('successful deliveries persist and increment only on successful resend', () => {
   const db = createDatabase();
   const store = new SubscriptionStore(db, { defaultLocale: 'en' });

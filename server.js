@@ -12,6 +12,7 @@ import sanitizeHtml from 'sanitize-html';
 import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-login-security.js';
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
+import { formatMemberDate, formatMemberTenure } from './lib/member-tenure.js';
 import { normalizePostCategory, POST_CATEGORIES } from './lib/post-categories.js';
 import { sendPostEmail } from './lib/post-email.js';
 import { SqliteSessionStore } from './lib/sqlite-session-store.js';
@@ -1094,7 +1095,11 @@ app.get(adminBasePath, requireAdmin, (req, res) => {
 });
 
 app.get(`${adminBasePath}/users`, requireAdmin, (req, res) => {
-  res.render('admin/users', { users: getUsersForAdmin(), csrf: req.session.csrf });
+  const users = getUsersForAdmin().map(user => ({
+    ...user,
+    registered_at: formatMemberDate(user.created_at, 'zh', { includeTime: true }),
+  }));
+  res.render('admin/users', { users, csrf: req.session.csrf });
 });
 
 app.get(`${adminBasePath}/users/new`, requireAdmin, (req, res) => {
@@ -3198,6 +3203,8 @@ function renderAdminUserForm(req, res, { user, isNew, error = null }) {
     resetMessage: resetMessages[req.query.reset] || null,
     resetError: ['failed', 'limited', 'unavailable', 'blocked'].includes(req.query.reset),
     passwordResetAvailable: passwordResetSecurity.ready,
+    registeredAt: isNew ? '' : formatMemberDate(user.created_at, 'zh', { includeTime: true }),
+    lastLoginAt: isNew || !user.last_login_at ? '' : formatMemberDate(user.last_login_at, 'zh', { includeTime: true }),
   });
 }
 
@@ -3242,6 +3249,10 @@ function renderAccount(req, res, {
     fields,
     memberCsrf: req.session.memberCsrf,
     currentUser,
+    memberSince: currentUser ? {
+      date: formatMemberDate(currentUser.created_at, res.locals.locale),
+      duration: formatMemberTenure(currentUser.created_at, res.locals.locale),
+    } : null,
     subscribeCopyLabel: subscribeCopy(res.locals.locale).title,
     registrationAvailable: registrationSecurity.ready,
     passwordResetAvailable: passwordResetSecurity.ready,
@@ -3336,7 +3347,7 @@ function accountCopy(locale) {
     username: 'ログイン名', usernameHint: '半角英字のみ、3〜32文字', email: 'メールアドレス', nickname: 'ニックネーム',
     passwordHint: '12文字以上で、大文字・小文字・数字・記号を含めてください', passwordConfirm: 'パスワード（確認）', avatar: 'プロフィール画像（任意）', avatarHint: 'JPEG、PNG、WebP、AVIF。最大1 MiB。',
     code: '6桁の確認コード', sendCode: '確認コードを送信', sendingCode: '送信中…', codeSent: '確認コードを送信しました。5分以内に入力してください。', registerButton: '登録する',
-    welcome: 'ようこそ', level: '会員レベル', registered: '登録が完了しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
+    welcome: 'ようこそ', level: '会員レベル', joinedAt: '登録日', registered: '登録が完了しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
     errors: {
       EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜20文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、メール機能をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。', INVALID_RESET_TOKEN: 'この再設定リンクは無効、使用済み、または期限切れです。', RESET_FAILED: 'パスワードを変更できませんでした。後でもう一度お試しください。',
     },
@@ -3351,7 +3362,7 @@ function accountCopy(locale) {
     username: 'Login name', usernameHint: 'English letters only, 3–32 characters', email: 'Email', nickname: 'Nickname',
     passwordHint: 'At least 12 characters with uppercase, lowercase, number, and symbol', passwordConfirm: 'Confirm password', avatar: 'Avatar (optional)', avatarHint: 'JPEG, PNG, WebP, or AVIF. Maximum 1 MiB.',
     code: '6-digit verification code', sendCode: 'Send code', sendingCode: 'Sending…', codeSent: 'Verification code sent. Enter it within 5 minutes.', registerButton: 'Create account',
-    welcome: 'Welcome', level: 'Membership level', registered: 'Your account has been created.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
+    welcome: 'Welcome', level: 'Membership level', joinedAt: 'Member since', registered: 'Your account has been created.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
     errors: {
       EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 20 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Email features are temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.', INVALID_RESET_TOKEN: 'This reset link is invalid, expired, or has already been used.', RESET_FAILED: 'The password could not be changed. Please try again later.',
     },
@@ -3366,7 +3377,7 @@ function accountCopy(locale) {
     username: '登录名', usernameHint: '仅限英文字母，3–32 位', email: '邮箱', nickname: '昵称',
     passwordHint: '至少 12 位，并同时包含大小写字母、数字和符号', passwordConfirm: '确认密码', avatar: '头像（非必填）', avatarHint: '支持 JPEG、PNG、WebP、AVIF，最大 1 MiB。',
     code: '6 位邮箱验证码', sendCode: '发送验证码', sendingCode: '正在发送…', codeSent: '验证码已发送，请在 5 分钟内填写。', registerButton: '完成注册',
-    welcome: '欢迎', level: '会员等级', registered: '账号注册成功。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
+    welcome: '欢迎', level: '会员等级', joinedAt: '注册时间', registered: '账号注册成功。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
     errors: {
       EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–20 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '邮件功能暂时不可用，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。', INVALID_RESET_TOKEN: '这个重置链接无效、已经使用或已经过期。', RESET_FAILED: '密码修改失败，请稍后再试。',
     },

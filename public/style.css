@@ -371,8 +371,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .account-username { margin: 8px 0 24px; color: var(--light); }
 .account-meta { margin: 24px 0; padding: 18px; border: 1px solid var(--line); border-radius: 9px; text-align: left; }
 .account-meta div { display: flex; justify-content: space-between; }
+.account-meta div + div { margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--line); }
 .account-meta dt { color: var(--light); }
-.account-meta dd { margin: 0; color: var(--strong); font-variant-numeric: tabular-nums; }
+.account-meta dd { margin: 0 0 0 18px; color: var(--strong); font-variant-numeric: tabular-nums; text-align: right; }
+.account-tenure { margin: -9px 0 0; color: var(--light); font-size: 13px; line-height: 1.6; }
 .account-profile-actions { display: grid; gap: 10px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
 .account-profile-actions form { margin: 0; }
 .account-profile-actions form button, .account-subscribe-link { width: 100%; margin: 0; }
@@ -600,6 +602,7 @@ body.is-admin { background: var(--bg-soft); }
 .user-list-copy { min-width: 0; }
 .user-list-copy strong, .user-list-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-list-copy small { margin-top: 3px; color: var(--light); }
+.user-list-copy .user-registered-at { margin-top: 6px; color: var(--mute); font-size: 11px; }
 .user-list-meta { display: flex; align-items: center; gap: 10px; color: var(--light); font-size: 13px; }
 .user-list-meta b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .user-list-meta i { font-size: 20px; font-style: normal; }

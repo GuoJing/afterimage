@@ -11,7 +11,7 @@
       <% users.forEach(user => { %>
         <a class="user-list-item" href="<%= adminBasePath %>/users/<%= user.id %>/edit">
           <% if (user.avatar_url) { %><img src="<%= user.avatar_url %>" width="42" height="42" alt=""><% } else { %><span class="user-list-avatar" aria-hidden="true"><%= user.nickname.slice(0, 1).toUpperCase() %></span><% } %>
-          <span class="user-list-copy"><strong><%= user.nickname %></strong><small>@<%= user.username %> · <%= user.email %></small></span>
+          <span class="user-list-copy"><strong><%= user.nickname %></strong><small>@<%= user.username %> · <%= user.email %></small><small class="user-registered-at">注册于 <%= user.registered_at %></small></span>
           <span class="user-list-meta"><b>Level <%= user.membership_level %></b><em class="status <%= user.status === 'active' ? 'published' : 'disabled' %>"><%= user.status === 'active' ? '正常' : '已封禁' %></em><i>›</i></span>
         </a>
       <% }) %>
