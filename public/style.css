@@ -375,6 +375,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .account-meta dt { color: var(--light); }
 .account-meta dd { margin: 0 0 0 18px; color: var(--strong); font-variant-numeric: tabular-nums; text-align: right; }
 .account-tenure { margin: -9px 0 0; color: var(--light); font-size: 13px; line-height: 1.6; }
+.account-preference-form { margin-top: 24px; padding: 17px; border: 1px solid var(--line); border-radius: 9px; text-align: left; }
+.account-preference-heading strong, .account-preference-heading small { display: block; }
+.account-preference-heading strong { color: var(--strong); font-size: 14px; font-weight: 650; }
+.account-preference-heading small { margin-top: 5px; color: var(--light); font-size: 12px; font-weight: 400; line-height: 1.55; }
+.account-preference-form select { margin-top: 12px; background: var(--bg); }
+.account-preference-form button { width: 100%; margin-top: 10px; }
 .account-profile-actions { display: grid; gap: 10px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
 .account-profile-actions form { margin: 0; }
 .account-profile-actions form button, .account-subscribe-link { width: 100%; margin: 0; }

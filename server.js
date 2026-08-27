@@ -184,6 +184,7 @@ db.exec(`
     membership_level INTEGER NOT NULL DEFAULT 0 CHECK (membership_level >= 0),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
     session_version INTEGER NOT NULL DEFAULT 0,
+    preferred_locale TEXT NOT NULL DEFAULT '',
     last_login_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -206,6 +207,7 @@ if (!postColumns.has('author')) db.exec("ALTER TABLE posts ADD COLUMN author TEX
 if (!postColumns.has('category')) db.exec("ALTER TABLE posts ADD COLUMN category TEXT NOT NULL DEFAULT ''");
 const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(column => column.name));
 if (!userColumns.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+if (!userColumns.has('preferred_locale')) db.exec("ALTER TABLE users ADD COLUMN preferred_locale TEXT NOT NULL DEFAULT ''");
 db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))").run(Date.now());
 ensureGallerySlugSchema();
 const subscriptionStore = new SubscriptionStore(db, { defaultLocale });
@@ -936,9 +938,9 @@ app.post('/account/register', consumeMemberRegistrationAttempt, parseAvatarUploa
     const passwordHash = await hashPassword(fields.password);
     const avatarUrl = req.file ? await storeImage(req.file.buffer, avatarType, req.file.originalname, 'avatars') : '';
     const result = db.prepare(`
-      INSERT INTO users (username, email, nickname, password_hash, avatar_url, membership_level)
-      VALUES (?, ?, ?, ?, ?, 0)
-    `).run(fields.username, fields.email, fields.nickname, passwordHash, avatarUrl);
+      INSERT INTO users (username, email, nickname, password_hash, avatar_url, membership_level, preferred_locale)
+      VALUES (?, ?, ?, ?, ?, 0, ?)
+    `).run(fields.username, fields.email, fields.nickname, passwordHash, avatarUrl, defaultLocale);
     await regenerateSession(req);
     req.session.userId = Number(result.lastInsertRowid);
     req.session.userSessionVersion = 0;
@@ -969,12 +971,24 @@ app.post('/account/logout', (req, res) => {
   res.redirect(accountUrl(res.locals.locale));
 });
 
+app.post('/account/preferences', requireMember, (req, res) => {
+  if (!validMemberCsrf(req)) return res.status(403).send('请求已过期，请刷新页面后重试。');
+  const requestedLocale = normalizeLocale(req.body.preferred_locale);
+  const preferredLocale = configuredLocales.includes(requestedLocale) ? requestedLocale : defaultLocale;
+  db.prepare(`
+    UPDATE users
+    SET preferred_locale = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(preferredLocale, res.locals.currentUser.id);
+  res.redirect(`${accountUrl(res.locals.locale)}&preferences=1`);
+});
+
 app.get('/subscribe', requireMember, (req, res) => {
   if (!req.session.memberCsrf) req.session.memberCsrf = createLoginCsrf();
   const currentUser = res.locals.currentUser;
   res.render('subscribe', {
     copy: subscribeCopy(res.locals.locale),
-    subscription: subscriptionStore.getPreferences(currentUser.id, res.locals.locale),
+    subscription: subscriptionStore.getPreferences(currentUser.id),
     memberCsrf: req.session.memberCsrf,
     saved: req.query.saved === '1',
     currentUser,
@@ -984,7 +998,6 @@ app.get('/subscribe', requireMember, (req, res) => {
 app.post('/subscribe', requireMember, (req, res) => {
   if (!validMemberCsrf(req)) return res.status(403).send('请求已过期，请刷新页面后重试。');
   subscriptionStore.savePreferences(res.locals.currentUser.id, {
-    locale: res.locals.locale,
     newPosts: req.body.new_posts === '1',
     newsletter: req.body.newsletter === '1',
     events: req.body.events === '1',
@@ -1112,9 +1125,9 @@ app.post(`${adminBasePath}/users`, requireAdmin, requireCsrf, async (req, res) =
     user = validateManagedUser(req.body);
     assertManagedUserUnique(user);
     const result = db.prepare(`
-      INSERT INTO users (username, email, nickname, password_hash, membership_level, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(user.username, user.email, user.nickname, unusablePasswordHash(), user.membership_level, user.status);
+      INSERT INTO users (username, email, nickname, password_hash, membership_level, status, preferred_locale)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(user.username, user.email, user.nickname, unusablePasswordHash(), user.membership_level, user.status, defaultLocale);
     const created = getUserForAdmin(Number(result.lastInsertRowid));
     const resetStatus = created.status === 'active'
       ? await sendAdminPasswordReset(created, req.ip, res.locals.locale)
@@ -3067,7 +3080,7 @@ function getCurrentUser(req) {
   const userId = Number(req.session?.userId);
   if (!Number.isInteger(userId) || userId <= 0) return null;
   const user = db.prepare(`
-    SELECT id, username, email, nickname, avatar_url, membership_level, session_version, created_at
+    SELECT id, username, email, nickname, avatar_url, membership_level, session_version, preferred_locale, created_at
     FROM users
     WHERE id = ? AND status = 'active'
   `).get(userId);
@@ -3253,6 +3266,10 @@ function renderAccount(req, res, {
       date: formatMemberDate(currentUser.created_at, res.locals.locale),
       duration: formatMemberTenure(currentUser.created_at, res.locals.locale),
     } : null,
+    preferredLocale: currentUser && configuredLocales.includes(normalizeLocale(currentUser.preferred_locale))
+      ? normalizeLocale(currentUser.preferred_locale)
+      : defaultLocale,
+    preferencesSaved: req.query.preferences === '1',
     subscribeCopyLabel: subscribeCopy(res.locals.locale).title,
     registrationAvailable: registrationSecurity.ready,
     passwordResetAvailable: passwordResetSecurity.ready,
@@ -3347,7 +3364,7 @@ function accountCopy(locale) {
     username: 'ログイン名', usernameHint: '半角英字のみ、3〜32文字', email: 'メールアドレス', nickname: 'ニックネーム',
     passwordHint: '12文字以上で、大文字・小文字・数字・記号を含めてください', passwordConfirm: 'パスワード（確認）', avatar: 'プロフィール画像（任意）', avatarHint: 'JPEG、PNG、WebP、AVIF。最大1 MiB。',
     code: '6桁の確認コード', sendCode: '確認コードを送信', sendingCode: '送信中…', codeSent: '確認コードを送信しました。5分以内に入力してください。', registerButton: '登録する',
-    welcome: 'ようこそ', level: '会員レベル', joinedAt: '登録日', registered: '登録が完了しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
+    welcome: 'ようこそ', level: '会員レベル', joinedAt: '登録日', registered: '登録が完了しました。', defaultLanguage: '標準言語', defaultLanguageDescription: '今後、サイト全体で使用する言語設定です。現在はサイトの表示言語を変更せず、記事メールの配信にのみ使用します。', saveLanguage: '言語を保存', languageSaved: '標準言語を保存しました。', tooMany: '操作が多すぎます。しばらくしてから再試行してください。', secondsUntilResend: seconds => `${seconds}秒後に再送できます`,
     errors: {
       EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_LOGIN: 'ログイン情報が正しくありません。', INVALID_USERNAME: 'ログイン名は3〜32文字の半角英字で入力してください。', INVALID_EMAIL: '有効なメールアドレスを入力してください。', INVALID_NICKNAME: 'ニックネームは1〜20文字で入力してください。', PASSWORD_MISMATCH: 'パスワードが一致しません。', WEAK_PASSWORD: 'パスワードは12文字以上で、大文字・小文字・数字・記号を含め、ログイン名やメールアドレスの一部を含めないでください。', USERNAME_EXISTS: 'このログイン名はすでに使用されています。', EMAIL_EXISTS: 'このメールアドレスはすでに登録されています。', INVALID_CODE: '確認コードが正しくありません。', EXPIRED_CODE: '確認コードの有効期限が切れました。もう一度送信してください。', MAIL_UNAVAILABLE: '現在、メール機能をご利用いただけません。', CODE_SEND_FAILED: '確認コードを送信できませんでした。後でもう一度お試しください。', TOO_MANY: '試行回数が多すぎます。しばらくしてから再試行してください。', AVATAR_TOO_LARGE: 'プロフィール画像は1 MiB以下にしてください。', INVALID_AVATAR: '対応していない画像形式です。', REGISTRATION_FAILED: '登録できませんでした。新しい確認コードで再試行してください。', INVALID_REGISTRATION: '入力内容を確認してください。', INVALID_RESET_TOKEN: 'この再設定リンクは無効、使用済み、または期限切れです。', RESET_FAILED: 'パスワードを変更できませんでした。後でもう一度お試しください。',
     },
@@ -3362,7 +3379,7 @@ function accountCopy(locale) {
     username: 'Login name', usernameHint: 'English letters only, 3–32 characters', email: 'Email', nickname: 'Nickname',
     passwordHint: 'At least 12 characters with uppercase, lowercase, number, and symbol', passwordConfirm: 'Confirm password', avatar: 'Avatar (optional)', avatarHint: 'JPEG, PNG, WebP, or AVIF. Maximum 1 MiB.',
     code: '6-digit verification code', sendCode: 'Send code', sendingCode: 'Sending…', codeSent: 'Verification code sent. Enter it within 5 minutes.', registerButton: 'Create account',
-    welcome: 'Welcome', level: 'Membership level', joinedAt: 'Member since', registered: 'Your account has been created.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
+    welcome: 'Welcome', level: 'Membership level', joinedAt: 'Member since', registered: 'Your account has been created.', defaultLanguage: 'Default language', defaultLanguageDescription: 'This is your language preference for the whole site. For now it does not change the language you are viewing and is used only for article emails.', saveLanguage: 'Save language', languageSaved: 'Your default language has been saved.', tooMany: 'Too many attempts. Please try again later.', secondsUntilResend: seconds => `Send again in ${seconds}s`,
     errors: {
       EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_LOGIN: 'The login details are incorrect.', INVALID_USERNAME: 'Use 3–32 English letters for the login name.', INVALID_EMAIL: 'Enter a valid email address.', INVALID_NICKNAME: 'Nickname must be between 1 and 20 characters.', PASSWORD_MISMATCH: 'The passwords do not match.', WEAK_PASSWORD: 'Use at least 12 characters with uppercase, lowercase, number, and symbol, without your login name or email name.', USERNAME_EXISTS: 'That login name is already in use.', EMAIL_EXISTS: 'That email address is already registered.', INVALID_CODE: 'The verification code is incorrect.', EXPIRED_CODE: 'The verification code has expired. Send a new one.', MAIL_UNAVAILABLE: 'Email features are temporarily unavailable.', CODE_SEND_FAILED: 'The verification code could not be sent. Try again later.', TOO_MANY: 'Too many attempts. Please try again later.', AVATAR_TOO_LARGE: 'The avatar must be no larger than 1 MiB.', INVALID_AVATAR: 'That image format is not supported.', REGISTRATION_FAILED: 'Registration failed. Request a new code and try again.', INVALID_REGISTRATION: 'Check the information you entered.', INVALID_RESET_TOKEN: 'This reset link is invalid, expired, or has already been used.', RESET_FAILED: 'The password could not be changed. Please try again later.',
     },
@@ -3377,7 +3394,7 @@ function accountCopy(locale) {
     username: '登录名', usernameHint: '仅限英文字母，3–32 位', email: '邮箱', nickname: '昵称',
     passwordHint: '至少 12 位，并同时包含大小写字母、数字和符号', passwordConfirm: '确认密码', avatar: '头像（非必填）', avatarHint: '支持 JPEG、PNG、WebP、AVIF，最大 1 MiB。',
     code: '6 位邮箱验证码', sendCode: '发送验证码', sendingCode: '正在发送…', codeSent: '验证码已发送，请在 5 分钟内填写。', registerButton: '完成注册',
-    welcome: '欢迎', level: '会员等级', joinedAt: '注册时间', registered: '账号注册成功。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
+    welcome: '欢迎', level: '会员等级', joinedAt: '注册时间', registered: '账号注册成功。', defaultLanguage: '默认语言', defaultLanguageDescription: '这是未来用于整个网站的语言偏好。目前不会改变你正在浏览的页面语言，仅用于文章邮件推送。', saveLanguage: '保存语言', languageSaved: '默认语言已保存。', tooMany: '操作过于频繁，请稍后再试。', secondsUntilResend: seconds => `${seconds} 秒后可重新发送`,
     errors: {
       EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_LOGIN: '邮箱、登录名或密码不正确。', INVALID_USERNAME: '登录名只能使用 3–32 位英文字母。', INVALID_EMAIL: '请输入有效的邮箱地址。', INVALID_NICKNAME: '昵称长度必须为 1–20 个字符。', PASSWORD_MISMATCH: '两次输入的密码不一致。', WEAK_PASSWORD: '密码至少 12 位，必须包含大小写字母、数字和符号，并且不能包含登录名或邮箱名称。', USERNAME_EXISTS: '这个登录名已经被使用。', EMAIL_EXISTS: '这个邮箱已经注册。', INVALID_CODE: '邮箱验证码不正确。', EXPIRED_CODE: '验证码已失效，请重新发送。', MAIL_UNAVAILABLE: '邮件功能暂时不可用，请稍后再试。', CODE_SEND_FAILED: '验证码发送失败，请稍后再试。', TOO_MANY: '尝试次数过多，请稍后再试。', AVATAR_TOO_LARGE: '头像不能超过 1 MiB。', INVALID_AVATAR: '头像格式不支持。', REGISTRATION_FAILED: '注册失败，请重新获取验证码后再试。', INVALID_REGISTRATION: '请检查注册信息。', INVALID_RESET_TOKEN: '这个重置链接无效、已经使用或已经过期。', RESET_FAILED: '密码修改失败，请稍后再试。',
     },
