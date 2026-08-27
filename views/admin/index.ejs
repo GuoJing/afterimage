@@ -9,10 +9,13 @@
     <section class="admin-card post-list">
       <% if (!posts.length) { %><div class="admin-empty"><span>◇</span><h2>还没有文章</h2><p>从一篇新文章开始。</p><a class="button primary" href="<%= adminBasePath %>/posts/new">新建文章</a></div><% } %>
       <% posts.forEach(post => { %>
-        <a class="admin-post" href="<%= adminBasePath %>/posts/<%= post.id %>/edit">
-          <span><strong><%= post.title %></strong><small><%= post.slug %></small></span>
-          <span class="admin-post-meta"><%= post.translation_locales || '—' %><em class="status <%= post.status %>"><%= post.status === 'published' ? '已发布' : '草稿' %></em><b>›</b></span>
-        </a>
+        <div class="admin-post admin-post-with-action">
+          <a class="admin-post-main" href="<%= adminBasePath %>/posts/<%= post.id %>/edit">
+            <span><strong><%= post.title %></strong><small><%= post.slug %></small></span>
+            <span class="admin-post-meta"><%= post.translation_locales || '—' %><em class="status <%= post.status %>"><%= post.status === 'published' ? '已发布' : '草稿' %></em></span>
+          </a>
+          <a class="button admin-delivery-link" href="<%= adminBasePath %>/posts/<%= post.id %>/delivery">推送 <small><%= post.sent_count %>/<%= post.subscriber_count %></small></a>
+        </div>
       <% }) %>
     </section>
   </main>

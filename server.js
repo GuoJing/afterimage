@@ -13,7 +13,9 @@ import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
 import { normalizePostCategory, POST_CATEGORIES } from './lib/post-categories.js';
+import { sendPostEmail } from './lib/post-email.js';
 import { SqliteSessionStore } from './lib/sqlite-session-store.js';
+import { SubscriptionStore } from './lib/subscription-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -205,6 +207,8 @@ const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(col
 if (!userColumns.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))").run(Date.now());
 ensureGallerySlugSchema();
+const subscriptionStore = new SubscriptionStore(db);
+const postDeliveryLocks = new Set();
 
 const markdownRenderer = new Renderer();
 markdownRenderer.paragraph = function renderParagraph(token) {
@@ -259,7 +263,7 @@ app.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
     res.set('Referrer-Policy', 'no-referrer');
   }
-  if (isAccountPath) {
+  if (isAccountPath || req.path === '/subscribe') {
     res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
     res.set('Cache-Control', 'no-store');
     res.set('Referrer-Policy', 'no-referrer');
@@ -964,6 +968,29 @@ app.post('/account/logout', (req, res) => {
   res.redirect(accountUrl(res.locals.locale));
 });
 
+app.get('/subscribe', requireMember, (req, res) => {
+  if (!req.session.memberCsrf) req.session.memberCsrf = createLoginCsrf();
+  const currentUser = res.locals.currentUser;
+  res.render('subscribe', {
+    copy: subscribeCopy(res.locals.locale),
+    subscription: subscriptionStore.getPreferences(currentUser.id, res.locals.locale),
+    memberCsrf: req.session.memberCsrf,
+    saved: req.query.saved === '1',
+    currentUser,
+  });
+});
+
+app.post('/subscribe', requireMember, (req, res) => {
+  if (!validMemberCsrf(req)) return res.status(403).send('请求已过期，请刷新页面后重试。');
+  subscriptionStore.savePreferences(res.locals.currentUser.id, {
+    locale: res.locals.locale,
+    newPosts: req.body.new_posts === '1',
+    newsletter: req.body.newsletter === '1',
+    events: req.body.events === '1',
+  });
+  res.redirect(`/subscribe?lang=${encodeURIComponent(res.locals.locale)}&saved=1`);
+});
+
 app.get(`${adminBasePath}/login`, (req, res) => {
   if (req.session.isAdmin) return res.redirect(adminBasePath);
   renderAdminLogin(req, res);
@@ -1052,7 +1079,9 @@ app.get(adminBasePath, requireAdmin, (req, res) => {
   const posts = db.prepare(`
     SELECT p.*, COALESCE(t.title,
       (SELECT title FROM post_translations WHERE post_id = p.id ORDER BY id LIMIT 1), p.slug) AS title,
-      (SELECT group_concat(locale, ', ') FROM post_translations WHERE post_id = p.id) AS translation_locales
+      (SELECT group_concat(locale, ', ') FROM post_translations WHERE post_id = p.id) AS translation_locales,
+      (SELECT COUNT(*) FROM user_subscriptions s JOIN users u ON u.id = s.user_id WHERE s.new_posts = 1 AND u.status = 'active') AS subscriber_count,
+      (SELECT COUNT(*) FROM post_email_deliveries d WHERE d.post_id = p.id AND d.sent_at IS NOT NULL) AS sent_count
     FROM posts p
     LEFT JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
     ORDER BY COALESCE(p.published_at, p.created_at) DESC
@@ -1170,6 +1199,68 @@ app.post(`${adminBasePath}/posts`, requireAdmin, requireCsrf, (req, res) => {
   } catch (error) {
     res.status(400).render('admin/form', { post: postFromBody(req.body), error: friendlyError(error), csrf: req.session.csrf, isNew: true });
   }
+});
+
+app.get(`${adminBasePath}/posts/:id/delivery`, requireAdmin, (req, res) => {
+  const post = getPostForAdmin(Number(req.params.id));
+  if (!post) return res.status(404).render('not-found');
+  const users = subscriptionStore.getDeliveryUsers(post.id);
+  res.render('admin/post-delivery', {
+    post,
+    users,
+    csrf: req.session.csrf,
+    mailConfigured: mailStatus.configured,
+    busy: postDeliveryLocks.has(post.id),
+    result: deliveryResultCopy(req.query),
+  });
+});
+
+app.post(`${adminBasePath}/posts/:id/delivery/send-all`, requireAdmin, requireCsrf, async (req, res) => {
+  const postId = Number(req.params.id);
+  const post = getPostForAdmin(postId);
+  if (!post) return res.status(404).render('not-found');
+  if (post.status !== 'published') return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=draft`);
+  if (!mailStatus.configured) return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=mail`);
+  if (postDeliveryLocks.has(postId)) return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=busy`);
+
+  postDeliveryLocks.add(postId);
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  try {
+    for (const user of subscriptionStore.getDeliveryUsers(postId)) {
+      if (user.sent_at) {
+        skipped += 1;
+        continue;
+      }
+      const delivered = await deliverPostToUser(post, user);
+      if (delivered) sent += 1;
+      else failed += 1;
+    }
+  } finally {
+    postDeliveryLocks.delete(postId);
+  }
+  res.redirect(`${adminBasePath}/posts/${postId}/delivery?sent=${sent}&failed=${failed}&skipped=${skipped}`);
+});
+
+app.post(`${adminBasePath}/posts/:id/delivery/users/:userId/force`, requireAdmin, requireCsrf, async (req, res) => {
+  const postId = Number(req.params.id);
+  const userId = Number(req.params.userId);
+  const post = getPostForAdmin(postId);
+  const user = subscriptionStore.getRecipient(userId);
+  if (!post || !user) return res.status(404).render('not-found');
+  if (post.status !== 'published') return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=draft`);
+  if (!mailStatus.configured) return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=mail`);
+  if (postDeliveryLocks.has(postId)) return res.redirect(`${adminBasePath}/posts/${postId}/delivery?error=busy`);
+
+  postDeliveryLocks.add(postId);
+  let delivered = false;
+  try {
+    delivered = await deliverPostToUser(post, user);
+  } finally {
+    postDeliveryLocks.delete(postId);
+  }
+  res.redirect(`${adminBasePath}/posts/${postId}/delivery?force=${delivered ? 'sent' : 'failed'}&user=${userId}`);
 });
 
 app.get(`${adminBasePath}/posts/:id/edit`, requireAdmin, (req, res) => {
@@ -2333,6 +2424,55 @@ function getPostForAdmin(id) {
   return base;
 }
 
+function getPostDeliveryTranslation(post, locale) {
+  const normalized = normalizeLocale(locale) || defaultLocale;
+  const selected = post.translationList.find(item => item.locale === normalized)
+    || post.translationList.find(item => item.locale === defaultLocale)
+    || post.translationList[0];
+  if (!selected) return null;
+  return { ...post, ...selected, rendered_locale: selected.locale };
+}
+
+async function deliverPostToUser(post, user) {
+  const translatedPost = getPostDeliveryTranslation(post, user.locale);
+  if (!translatedPost) return false;
+  const locale = translatedPost.rendered_locale;
+  try {
+    await sendPostEmail({
+      to: user.email,
+      blog,
+      post: translatedPost,
+      articleUrl: absoluteUrl(postUrl(locale, post.slug)),
+      preferencesUrl: absoluteUrl(`/subscribe?lang=${encodeURIComponent(user.locale || locale)}`),
+      bodyHtml: absolutizeFeedHtml(renderMarkdown(translatedPost.body)),
+    });
+    subscriptionStore.recordSuccess(post.id, user, locale);
+    return true;
+  } catch (error) {
+    subscriptionStore.recordFailure(post.id, user, locale);
+    console.error(`文章邮件发送失败（post=${post.id}, user=${user.id}）：`, error);
+    return false;
+  }
+}
+
+function deliveryResultCopy(query) {
+  if (query.error === 'draft') return { type: 'error', text: '草稿不能推送，请先发布文章。' };
+  if (query.error === 'mail') return { type: 'error', text: '邮件功能尚未配置或启用。' };
+  if (query.error === 'busy') return { type: 'error', text: '这篇文章正在推送，请稍后刷新查看结果。' };
+  if (query.force === 'sent') return { type: 'success', text: '已向该用户强制重发。' };
+  if (query.force === 'failed') return { type: 'error', text: '强制重发失败，请检查服务端日志。' };
+  if (query.sent !== undefined) {
+    const sent = Math.max(0, Number(query.sent) || 0);
+    const failed = Math.max(0, Number(query.failed) || 0);
+    const skipped = Math.max(0, Number(query.skipped) || 0);
+    return {
+      type: failed ? 'error' : 'success',
+      text: `推送完成：成功 ${sent}，失败 ${failed}，已发送跳过 ${skipped}。`,
+    };
+  }
+  return null;
+}
+
 function withPageLocales(page) {
   page.availableLocales = db.prepare('SELECT locale FROM page_translations WHERE page_id = ? ORDER BY locale').all(page.id).map(row => row.locale);
   return page;
@@ -2889,6 +3029,13 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function requireMember(req, res, next) {
+  const currentUser = getCurrentUser(req);
+  if (!currentUser) return res.redirect(`${accountUrl(res.locals.locale)}&required=subscribe`);
+  res.locals.currentUser = currentUser;
+  next();
+}
+
 function requireCsrf(req, res, next) {
   const supplied = String(req.body?.csrf || req.get('x-csrf-token') || '');
   if (!req.session.csrf || !safeEqual(supplied, req.session.csrf)) return res.status(403).send('请求已过期，请刷新页面后重试。');
@@ -3091,6 +3238,7 @@ function renderAccount(req, res, {
     fields,
     memberCsrf: req.session.memberCsrf,
     currentUser,
+    subscribeCopyLabel: subscribeCopy(res.locals.locale).title,
     registrationAvailable: registrationSecurity.ready,
     passwordResetAvailable: passwordResetSecurity.ready,
     resetAvailable,
@@ -3146,6 +3294,30 @@ function memberFormFields(body = {}) {
     username: String(body.username || ''),
     email: String(body.email || ''),
     nickname: String(body.nickname || ''),
+  };
+}
+
+function subscribeCopy(locale) {
+  if (String(locale).startsWith('ja')) return {
+    title: '配信設定', eyebrow: 'SUBSCRIBE', lead: 'AFTERIMAGE から届くメールを選択できます。配信先は登録済みのメールアドレスです。',
+    email: '配信先', save: '設定を保存', saved: '配信設定を保存しました。', back: 'アカウントに戻る',
+    newPosts: '新しい記事', newPostsDescription: '新しい記事を公開した際に、記事本文をメールでお届けします。',
+    newsletter: 'ニュースレター', newsletterDescription: '写真、制作ノート、サイトからのお知らせをまとめてお届けします。', reserved: '準備中',
+    events: 'イベントのお知らせ', eventsDescription: '展示、トーク、その他のイベント情報をお届けします。',
+  };
+  if (String(locale).startsWith('en')) return {
+    title: 'Email subscriptions', eyebrow: 'SUBSCRIBE', lead: 'Choose which emails you would like to receive from AFTERIMAGE. We will use the email address already attached to your account.',
+    email: 'Delivered to', save: 'Save preferences', saved: 'Your subscription preferences have been saved.', back: 'Back to account',
+    newPosts: 'New articles', newPostsDescription: 'Receive a beautifully formatted email when a new article is published.',
+    newsletter: 'Newsletter', newsletterDescription: 'Occasional notes about photography, ongoing work, and updates from the site.', reserved: 'Coming soon',
+    events: 'Event updates', eventsDescription: 'News about exhibitions, talks, and other AFTERIMAGE events.',
+  };
+  return {
+    title: '邮件订阅', eyebrow: 'SUBSCRIBE', lead: '选择你希望从 AFTERIMAGE 收到的邮件。我们会直接使用会员账号绑定的邮箱。',
+    email: '接收邮箱', save: '保存订阅设置', saved: '订阅设置已保存。', back: '返回会员中心',
+    newPosts: '新文章推送', newPostsDescription: '新文章发布后，通过排版完整的邮件收到文章内容。',
+    newsletter: 'Newsletter', newsletterDescription: '不定期收到摄影、创作手记与网站近况。', reserved: '功能准备中',
+    events: '活动推送', eventsDescription: '收到展览、分享会以及其他 AFTERIMAGE 活动信息。',
   };
 }
 
