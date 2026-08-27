@@ -5,22 +5,25 @@
     <p class="eyebrow"><%= copy.eyebrow %></p>
     <h1><%= copy.title %></h1>
     <p class="subscribe-lead"><%= copy.lead %></p>
+    <p class="subscribe-default-note"><%= copy.defaultNote %></p>
     <p class="subscribe-email"><span><%= copy.email %></span><strong><%= currentUser.email %></strong></p>
     <% if (saved) { %><p class="form-success"><%= copy.saved %></p><% } %>
     <form action="/subscribe?lang=<%= encodeURIComponent(locale) %>" method="post">
       <input type="hidden" name="csrf" value="<%= memberCsrf %>">
-      <label class="subscribe-option">
-        <span><strong><%= copy.newPosts %></strong><small><%= copy.newPostsDescription %></small></span>
-        <span class="switch-control"><input type="checkbox" name="new_posts" value="1" <%= subscription.new_posts ? 'checked' : '' %>><i aria-hidden="true"></i></span>
-      </label>
-      <label class="subscribe-option">
-        <span><strong><%= copy.newsletter %></strong><small><%= copy.newsletterDescription %></small><em><%= copy.reserved %></em></span>
-        <span class="switch-control"><input type="checkbox" name="newsletter" value="1" <%= subscription.newsletter ? 'checked' : '' %>><i aria-hidden="true"></i></span>
-      </label>
-      <label class="subscribe-option">
-        <span><strong><%= copy.events %></strong><small><%= copy.eventsDescription %></small><em><%= copy.reserved %></em></span>
-        <span class="switch-control"><input type="checkbox" name="events" value="1" <%= subscription.events ? 'checked' : '' %>><i aria-hidden="true"></i></span>
-      </label>
+      <div class="subscribe-options">
+        <label class="subscribe-option">
+          <span><strong><%= copy.newPosts %></strong><small><%= copy.newPostsDescription %></small></span>
+          <span class="switch-control"><input type="checkbox" name="new_posts" value="1" <%= subscription.new_posts ? 'checked' : '' %>><i aria-hidden="true"></i></span>
+        </label>
+        <label class="subscribe-option">
+          <span><strong><%= copy.newsletter %></strong><small><%= copy.newsletterDescription %></small><em><%= copy.reserved %></em></span>
+          <span class="switch-control"><input type="checkbox" name="newsletter" value="1" <%= subscription.newsletter ? 'checked' : '' %>><i aria-hidden="true"></i></span>
+        </label>
+        <label class="subscribe-option">
+          <span><strong><%= copy.events %></strong><small><%= copy.eventsDescription %></small><em><%= copy.reserved %></em></span>
+          <span class="switch-control"><input type="checkbox" name="events" value="1" <%= subscription.events ? 'checked' : '' %>><i aria-hidden="true"></i></span>
+        </label>
+      </div>
       <button class="primary subscribe-save" type="submit"><%= copy.save %></button>
     </form>
   </section>

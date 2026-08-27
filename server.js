@@ -207,7 +207,7 @@ const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(col
 if (!userColumns.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
 db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))").run(Date.now());
 ensureGallerySlugSchema();
-const subscriptionStore = new SubscriptionStore(db);
+const subscriptionStore = new SubscriptionStore(db, { defaultLocale });
 const postDeliveryLocks = new Set();
 
 const markdownRenderer = new Renderer();
@@ -1080,7 +1080,11 @@ app.get(adminBasePath, requireAdmin, (req, res) => {
     SELECT p.*, COALESCE(t.title,
       (SELECT title FROM post_translations WHERE post_id = p.id ORDER BY id LIMIT 1), p.slug) AS title,
       (SELECT group_concat(locale, ', ') FROM post_translations WHERE post_id = p.id) AS translation_locales,
-      (SELECT COUNT(*) FROM user_subscriptions s JOIN users u ON u.id = s.user_id WHERE s.new_posts = 1 AND u.status = 'active') AS subscriber_count,
+      (SELECT COUNT(*) FROM users u
+        WHERE u.status = 'active' AND NOT EXISTS (
+          SELECT 1 FROM user_subscription_opt_outs opt_out
+          WHERE opt_out.user_id = u.id AND opt_out.subscription_type = 'new_posts'
+        )) AS subscriber_count,
       (SELECT COUNT(*) FROM post_email_deliveries d WHERE d.post_id = p.id AND d.sent_at IS NOT NULL) AS sent_count
     FROM posts p
     LEFT JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
@@ -3299,21 +3303,21 @@ function memberFormFields(body = {}) {
 
 function subscribeCopy(locale) {
   if (String(locale).startsWith('ja')) return {
-    title: '配信設定', eyebrow: 'SUBSCRIBE', lead: 'AFTERIMAGE から届くメールを選択できます。配信先は登録済みのメールアドレスです。',
+    title: '配信設定', eyebrow: 'SUBSCRIBE', lead: 'AFTERIMAGE から届くメールを選択できます。配信先は登録済みのメールアドレスです。', defaultNote: 'すべての配信は初期状態でオンです。不要な項目だけスイッチをオフにしてください。',
     email: '配信先', save: '設定を保存', saved: '配信設定を保存しました。', back: 'アカウントに戻る',
     newPosts: '新しい記事', newPostsDescription: '新しい記事を公開した際に、記事本文をメールでお届けします。',
     newsletter: 'ニュースレター', newsletterDescription: '写真、制作ノート、サイトからのお知らせをまとめてお届けします。', reserved: '準備中',
     events: 'イベントのお知らせ', eventsDescription: '展示、トーク、その他のイベント情報をお届けします。',
   };
   if (String(locale).startsWith('en')) return {
-    title: 'Email subscriptions', eyebrow: 'SUBSCRIBE', lead: 'Choose which emails you would like to receive from AFTERIMAGE. We will use the email address already attached to your account.',
+    title: 'Email subscriptions', eyebrow: 'SUBSCRIBE', lead: 'Choose which emails you would like to receive from AFTERIMAGE. We will use the email address already attached to your account.', defaultNote: 'All email types are on by default. Turn a switch off to opt out of that category.',
     email: 'Delivered to', save: 'Save preferences', saved: 'Your subscription preferences have been saved.', back: 'Back to account',
     newPosts: 'New articles', newPostsDescription: 'Receive a beautifully formatted email when a new article is published.',
     newsletter: 'Newsletter', newsletterDescription: 'Occasional notes about photography, ongoing work, and updates from the site.', reserved: 'Coming soon',
     events: 'Event updates', eventsDescription: 'News about exhibitions, talks, and other AFTERIMAGE events.',
   };
   return {
-    title: '邮件订阅', eyebrow: 'SUBSCRIBE', lead: '选择你希望从 AFTERIMAGE 收到的邮件。我们会直接使用会员账号绑定的邮箱。',
+    title: '邮件订阅', eyebrow: 'SUBSCRIBE', lead: '选择你希望从 AFTERIMAGE 收到的邮件。我们会直接使用会员账号绑定的邮箱。', defaultNote: '所有邮件默认开启；关闭开关后，系统只记录你不希望接收的类型。',
     email: '接收邮箱', save: '保存订阅设置', saved: '订阅设置已保存。', back: '返回会员中心',
     newPosts: '新文章推送', newPostsDescription: '新文章发布后，通过排版完整的邮件收到文章内容。',
     newsletter: 'Newsletter', newsletterDescription: '不定期收到摄影、创作手记与网站近况。', reserved: '功能准备中',

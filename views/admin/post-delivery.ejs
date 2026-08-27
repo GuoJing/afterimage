@@ -1,7 +1,7 @@
 <%- include('../partials/head', { pageTitle: `推送 · ${post.translationList[0]?.title || post.slug}`, adminLayout: true }) %>
 <div class="admin-layout">
   <%- include('sidebar', { adminSection: 'posts' }) %>
-  <main class="admin-content">
+  <main class="admin-content delivery-page">
     <header class="admin-page-head">
       <div><p class="eyebrow">DELIVERY</p><h1>文章推送</h1><p><strong><%= post.translationList[0]?.title || post.slug %></strong> · <%= post.status === 'published' ? '已发布' : '草稿' %></p></div>
       <div class="button-row"><a class="button" href="<%= adminBasePath %>">返回文章管理</a><a class="button" href="<%= adminBasePath %>/posts/<%= post.id %>/edit">编辑文章</a></div>
@@ -10,15 +10,15 @@
     <% if (!mailConfigured) { %><p class="form-error">邮件功能尚未启用，请先检查 MAIL_ENABLED 和 SMTP 配置。</p><% } %>
     <% if (post.status !== 'published') { %><p class="form-error">文章仍是草稿。只有已发布文章才能发送给订阅用户。</p><% } %>
     <section class="admin-card delivery-summary">
-      <div><span>新文章订阅用户</span><strong><%= users.length %></strong></div>
-      <div><span>已成功发送</span><strong><%= users.filter(user => user.sent_at).length %></strong></div>
+      <div class="delivery-stat"><span>新文章订阅用户</span><strong><%= users.length %></strong></div>
+      <div class="delivery-stat"><span>已成功发送</span><strong><%= users.filter(user => user.sent_at).length %></strong></div>
       <form action="<%= adminBasePath %>/posts/<%= post.id %>/delivery/send-all" method="post">
         <input type="hidden" name="csrf" value="<%= csrf %>">
         <button class="primary" type="submit" <%= !mailConfigured || post.status !== 'published' || busy || !users.length ? 'disabled' : '' %> onclick="return confirm('向所有尚未收到这篇文章的订阅用户发送邮件？')"><%= busy ? '正在推送…' : '推送给未发送用户' %></button>
       </form>
     </section>
     <section class="admin-card delivery-list">
-      <% if (!users.length) { %><div class="admin-empty"><span>◇</span><h2>还没有新文章订阅用户</h2><p>用户开启“新文章推送”后会出现在这里。</p></div><% } %>
+      <% if (!users.length) { %><div class="admin-empty"><span>◇</span><h2>没有可推送的用户</h2><p>正常会员默认订阅新文章；主动关闭此项的会员不会出现在这里。</p></div><% } %>
       <% users.forEach(user => { %>
         <article class="delivery-user">
           <span class="delivery-state <%= user.sent_at ? 'sent' : 'pending' %>" title="<%= user.sent_at ? '已发送' : '未发送' %>"><%= user.sent_at ? '✓' : '·' %></span>
