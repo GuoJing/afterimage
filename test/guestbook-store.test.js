@@ -7,8 +7,8 @@ function createDatabase() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(`
-    CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT);
-    INSERT INTO users (id, username) VALUES (1, 'member');
+    CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, avatar_url TEXT NOT NULL DEFAULT '');
+    INSERT INTO users (id, username, avatar_url) VALUES (1, 'member', '/uploads/member.jpg');
   `);
   return db;
 }
@@ -27,7 +27,10 @@ test('new messages remain pending and are invisible until approved', () => {
   assert.equal(store.getAll()[0].status, 'pending');
   store.approve(id, 101_000);
   assert.equal(store.countApproved(), 1);
-  assert.equal(store.getApproved(10, 0)[0].content, 'Hello');
+  assert.deepEqual(
+    { content: store.getApproved(10, 0)[0].content, avatar: store.getApproved(10, 0)[0].avatar_url },
+    { content: 'Hello', avatar: '/uploads/member.jpg' },
+  );
   db.close();
 });
 
