@@ -1,0 +1,30 @@
+<%- include('../partials/head', { pageTitle: '留言管理', adminLayout: true }) %>
+<div class="admin-layout">
+  <%- include('sidebar', { adminSection: 'guestbook' }) %>
+  <main class="admin-content">
+    <header class="admin-page-head">
+      <div><p class="eyebrow">COMMUNITY</p><h1>留言管理</h1><p>审核公开留言，或删除不适合展示的内容。</p></div>
+    </header>
+    <% if (result === 'approved') { %><p class="form-success">留言已经审核通过。</p><% } %>
+    <% if (result === 'deleted') { %><p class="form-success">留言已经删除。</p><% } %>
+    <section class="admin-card guestbook-admin-list">
+      <% if (!messages.length) { %><div class="admin-empty"><span>✦</span><h2>还没有留言</h2><p>新留言提交后会出现在这里等待审核。</p></div><% } %>
+      <% messages.forEach(message => { %>
+        <article class="guestbook-admin-item">
+          <div class="guestbook-admin-meta">
+            <div><strong><%= message.author_name %></strong><% if (message.account_username) { %><small>登录用户 @<%= message.account_username %></small><% } else { %><small>匿名访客</small><% } %></div>
+            <div><time><%= message.submitted_at_display %></time><em class="status <%= message.status === 'approved' ? 'published' : 'draft' %>"><%= message.status === 'approved' ? '已通过' : '待审核' %></em></div>
+          </div>
+          <p><%= message.content %></p>
+          <div class="guestbook-admin-actions">
+            <% if (message.status !== 'approved') { %>
+              <form action="<%= adminBasePath %>/guestbook/<%= message.id %>/approve" method="post"><input type="hidden" name="csrf" value="<%= csrf %>"><button class="primary" type="submit">审核通过</button></form>
+            <% } %>
+            <form action="<%= adminBasePath %>/guestbook/<%= message.id %>/delete" method="post" onsubmit="return confirm('确定删除这条留言吗？删除后无法恢复。')"><input type="hidden" name="csrf" value="<%= csrf %>"><button class="danger" type="submit">删除</button></form>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+</div>
+<%- include('../partials/footer', { adminLayout: true }) %>

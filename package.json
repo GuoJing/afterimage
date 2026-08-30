@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env --watch server.js",
     "start": "node --env-file-if-exists=.env server.js",
-    "check": "node --check server.js && node --check lib/mailer.js && node --check lib/admin-login-security.js && node --check lib/member-security.js && node --check lib/member-tenure.js && node --check lib/post-categories.js && node --check lib/sqlite-session-store.js && node --check lib/subscription-store.js && node --check lib/post-email.js && node --check scripts/mail-test.js",
+    "check": "node --check server.js && node --check lib/mailer.js && node --check lib/admin-login-security.js && node --check lib/member-security.js && node --check lib/member-tenure.js && node --check lib/post-categories.js && node --check lib/sqlite-session-store.js && node --check lib/subscription-store.js && node --check lib/guestbook-store.js && node --check lib/post-email.js && node --check scripts/mail-test.js",
     "test": "node --test test/*.test.js",
     "mail:verify": "node --env-file-if-exists=.env scripts/mail-test.js --verify",
     "mail:test": "node --env-file-if-exists=.env scripts/mail-test.js"

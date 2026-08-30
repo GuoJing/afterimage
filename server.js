@@ -13,6 +13,7 @@ import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
 import { formatMemberDate, formatMemberTenure } from './lib/member-tenure.js';
+import { GuestbookStore, GuestbookValidationError, guestbookLimits } from './lib/guestbook-store.js';
 import { normalizePostCategory, POST_CATEGORIES } from './lib/post-categories.js';
 import { sendPostEmail } from './lib/post-email.js';
 import { SqliteSessionStore } from './lib/sqlite-session-store.js';
@@ -46,6 +47,7 @@ if (process.env.NODE_ENV === 'production' && !siteUrl.startsWith('https://')) {
 const defaultLocale = normalizeLocale(process.env.DEFAULT_LOCALE || 'zh');
 const configuredLocales = [...new Set((process.env.BLOG_LOCALES || 'zh,en,ja').split(',').map(normalizeLocale).filter(Boolean))];
 const defaultPostEditorLocales = ['zh', 'en', 'ja'];
+const guestbookPageSize = 10;
 if (!defaultLocale) throw new Error('DEFAULT_LOCALE 不是有效的语言代码');
 if (!configuredLocales.includes(defaultLocale)) configuredLocales.unshift(defaultLocale);
 
@@ -211,6 +213,8 @@ if (!userColumns.has('preferred_locale')) db.exec("ALTER TABLE users ADD COLUMN 
 db.prepare("DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND used_at < datetime('now', '-1 day'))").run(Date.now());
 ensureGallerySlugSchema();
 const subscriptionStore = new SubscriptionStore(db, { defaultLocale });
+const guestbookStore = new GuestbookStore(db);
+const guestbookIpSecret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const postDeliveryLocks = new Set();
 
 const markdownRenderer = new Renderer();
@@ -722,6 +726,27 @@ app.get('/language/:locale', (req, res) => {
   res.redirect(canSelectLocale ? localizePath(next, locale) : next);
 });
 
+app.get('/guestbook', (req, res) => {
+  renderGuestbook(req, res);
+});
+
+app.post('/guestbook', (req, res) => {
+  if (!validGuestbookCsrf(req)) return renderGuestbook(req, res.status(403), { errorCode: 'EXPIRED_FORM', fields: req.body });
+  const currentUser = res.locals.currentUser;
+  try {
+    guestbookStore.submit({
+      userId: currentUser?.id,
+      authorName: currentUser?.nickname || req.body.author_name,
+      content: req.body.content,
+      ipHash: guestbookIpHash(req.ip),
+    });
+    return res.redirect(`${guestbookPath(res.locals.locale)}${guestbookPath(res.locals.locale).includes('?') ? '&' : '?'}submitted=1`);
+  } catch (error) {
+    const code = error instanceof GuestbookValidationError ? error.code : 'INVALID_REQUEST';
+    return renderGuestbook(req, res.status(code === 'RATE_LIMIT' ? 429 : 400), { errorCode: code, fields: req.body });
+  }
+});
+
 app.get('/account', (req, res) => {
   renderAccount(req, res);
 });
@@ -1113,6 +1138,28 @@ app.get(`${adminBasePath}/users`, requireAdmin, (req, res) => {
     registered_at: formatMemberDate(user.created_at, 'zh', { includeTime: true }),
   }));
   res.render('admin/users', { users, csrf: req.session.csrf });
+});
+
+app.get(`${adminBasePath}/guestbook`, requireAdmin, (req, res) => {
+  const messages = guestbookStore.getAll().map(message => ({
+    ...message,
+    submitted_at_display: formatGuestbookDate(message.submitted_at, 'zh'),
+  }));
+  res.render('admin/guestbook', {
+    messages,
+    csrf: req.session.csrf,
+    result: req.query.approved === '1' ? 'approved' : req.query.deleted === '1' ? 'deleted' : '',
+  });
+});
+
+app.post(`${adminBasePath}/guestbook/:id/approve`, requireAdmin, requireCsrf, (req, res) => {
+  guestbookStore.approve(Number(req.params.id));
+  res.redirect(`${adminBasePath}/guestbook?approved=1`);
+});
+
+app.post(`${adminBasePath}/guestbook/:id/delete`, requireAdmin, requireCsrf, (req, res) => {
+  guestbookStore.delete(Number(req.params.id));
+  res.redirect(`${adminBasePath}/guestbook?deleted=1`);
 });
 
 app.get(`${adminBasePath}/users/new`, requireAdmin, (req, res) => {
@@ -1695,6 +1742,14 @@ function topicsPath(locale) {
   return locale === defaultLocale ? '/topics' : `/topics?lang=${encodeURIComponent(locale)}`;
 }
 
+function guestbookPath(locale, page = 1) {
+  const params = new URLSearchParams();
+  if (locale !== defaultLocale) params.set('lang', locale);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `/guestbook?${query}` : '/guestbook';
+}
+
 function topicPath(slug, locale) {
   const pathname = `/topics/${encodeURIComponent(slug)}`;
   return locale === defaultLocale ? pathname : `${pathname}?lang=${encodeURIComponent(locale)}`;
@@ -1957,6 +2012,19 @@ function buildSitemap() {
       '  <url>',
       `    <loc>${escapeXml(absoluteUrl(topicsPath(locale)))}</loc>`,
       ...topicsAlternates,
+      '  </url>',
+    ].join('\n'));
+  }
+
+  const guestbookAlternates = configuredLocales.map(locale =>
+    `    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(absoluteUrl(guestbookPath(locale)))}" />`
+  );
+  guestbookAlternates.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(absoluteUrl(guestbookPath(defaultLocale)))}" />`);
+  for (const locale of configuredLocales) {
+    urls.push([
+      '  <url>',
+      `    <loc>${escapeXml(absoluteUrl(guestbookPath(locale)))}</loc>`,
+      ...guestbookAlternates,
       '  </url>',
     ].join('\n'));
   }
@@ -2228,6 +2296,7 @@ function localizePath(currentPath, locale) {
   if (pathname === '/account/reset') return accountResetUrl(locale);
   if (pathname === '/archive') return archivePath(locale);
   if (pathname === '/topics') return topicsPath(locale);
+  if (pathname === '/guestbook') return guestbookPath(locale, parseHomePage(currentUrl.searchParams.get('page')) || 1);
   const topicMatch = pathname.match(/^\/topics\/([^/]+)$/);
   if (topicMatch) return topicPath(topicMatch[1], locale);
   if (/^\/galleries\/?$/.test(pathname)) return '/galleries';
@@ -3326,6 +3395,83 @@ function memberFormFields(body = {}) {
     username: String(body.username || ''),
     email: String(body.email || ''),
     nickname: String(body.nickname || ''),
+  };
+}
+
+function renderGuestbook(req, res, { errorCode = null, fields = {} } = {}) {
+  const page = parseHomePage(req.query.page);
+  if (!page) return res.status(404).render('not-found');
+  const totalMessages = guestbookStore.countApproved();
+  const totalPages = Math.max(1, Math.ceil(totalMessages / guestbookPageSize));
+  if (page > totalPages) return res.status(404).render('not-found');
+  if (!req.session.guestbookCsrf) req.session.guestbookCsrf = createLoginCsrf();
+  const copy = guestbookCopy(res.locals.locale);
+  const messages = guestbookStore.getApproved(guestbookPageSize, (page - 1) * guestbookPageSize).map(message => ({
+    ...message,
+    submitted_at_display: formatGuestbookDate(message.submitted_at, res.locals.locale),
+  }));
+  const canonicalUrl = absoluteUrl(guestbookPath(res.locals.locale, page));
+  return res.render('guestbook', {
+    copy,
+    messages,
+    page,
+    totalPages,
+    totalMessages,
+    formAction: guestbookPath(res.locals.locale),
+    previousUrl: page > 1 ? guestbookPath(res.locals.locale, page - 1) : null,
+    nextUrl: page < totalPages ? guestbookPath(res.locals.locale, page + 1) : null,
+    canonicalUrl,
+    alternateUrls: configuredLocales.map(locale => ({ locale, url: absoluteUrl(guestbookPath(locale, page)) })),
+    xDefaultUrl: absoluteUrl(guestbookPath(defaultLocale, page)),
+    description: copy.description,
+    documentTitle: page === 1 ? `${copy.title} | ${blog.title}` : `${copy.title} — ${copy.page(page)} | ${blog.title}`,
+    guestbookCsrf: req.session.guestbookCsrf,
+    submitted: req.query.submitted === '1',
+    error: errorCode ? (copy.errors[errorCode] || copy.errors.INVALID_REQUEST) : null,
+    fields: guestbookFields(fields),
+    limits: guestbookLimits,
+  });
+}
+
+function guestbookFields(fields = {}) {
+  return {
+    author_name: String(fields.author_name || '').slice(0, guestbookLimits.author),
+    content: String(fields.content || '').slice(0, guestbookLimits.content),
+  };
+}
+
+function guestbookIpHash(ip) {
+  return crypto.createHmac('sha256', guestbookIpSecret).update(String(ip || '')).digest('hex');
+}
+
+function validGuestbookCsrf(req) {
+  const supplied = String(req.body?.csrf || '');
+  return Boolean(req.session.guestbookCsrf && safeEqual(supplied, req.session.guestbookCsrf));
+}
+
+function formatGuestbookDate(value, locale) {
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const localeName = String(locale).startsWith('ja') ? 'ja-JP' : String(locale).startsWith('en') ? 'en-US' : 'zh-CN';
+  return new Intl.DateTimeFormat(localeName, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Shanghai',
+  }).format(date);
+}
+
+function guestbookCopy(locale) {
+  if (String(locale).startsWith('ja')) return {
+    title: 'ゲストブック', description: 'AFTERIMAGE へのメッセージを残してください。承認後、このページに掲載されます。', count: count => `${count}件のメッセージ`, empty: 'まだ公開されたメッセージはありません。最初のメッセージをどうぞ。', formTitle: 'メッセージを残す', signedInAs: name => `${name} として投稿します`, author: 'お名前', authorPlaceholder: '表示するお名前', content: 'メッセージ', contentPlaceholder: 'ここにメッセージを入力してください…', submit: '送信する', pendingNote: '送信後、承認されるまで公開されません。1つのIPアドレスから送信できるのは1分に1回です。', submitted: 'メッセージを受け付けました。確認後に公開されます。', previous: '前のページ', next: '次のページ', page: number => `${number}ページ`,
+    errors: { EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_AUTHOR: 'お名前は1〜40文字で入力してください。', EMPTY_CONTENT: 'メッセージを入力してください。', CONTENT_TOO_LONG: 'メッセージは2000文字以内で入力してください。', UNSAFE_CONTENT: '安全なテキストを入力してください。', RATE_LIMIT: '送信間隔が短すぎます。1分待ってから再試行してください。', INVALID_REQUEST: '送信内容を確認してください。' },
+  };
+  if (String(locale).startsWith('en')) return {
+    title: 'Guestbook', description: 'Leave a note for AFTERIMAGE. Messages appear here after review.', count: count => `${count} ${count === 1 ? 'message' : 'messages'}`, empty: 'No messages have been published yet. You can leave the first one.', formTitle: 'Leave a message', signedInAs: name => `Posting as ${name}`, author: 'Name', authorPlaceholder: 'Name shown with your message', content: 'Message', contentPlaceholder: 'Write your message here…', submit: 'Submit message', pendingNote: 'Messages are hidden until approved. Each IP address can submit once per minute.', submitted: 'Thank you. Your message was submitted and will appear after review.', previous: 'Previous', next: 'Next', page: number => `Page ${number}`,
+    errors: { EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_AUTHOR: 'Enter a name between 1 and 40 characters.', EMPTY_CONTENT: 'Write a message before submitting.', CONTENT_TOO_LONG: 'Keep your message within 2,000 characters.', UNSAFE_CONTENT: 'Enter a safe plain-text message.', RATE_LIMIT: 'Please wait one minute before submitting another message.', INVALID_REQUEST: 'Check your message and try again.' },
+  };
+  return {
+    title: '留言板', description: '给 AFTERIMAGE 留下一段话。留言审核通过后会显示在这里。', count: count => `${count} 条留言`, empty: '暂时还没有公开留言，你可以留下第一条。', formTitle: '写下留言', signedInAs: name => `将以 ${name} 的身份留言`, author: '用户名', authorPlaceholder: '留言旁显示的名字', content: '留言内容', contentPlaceholder: '在这里写下你想说的话……', submit: '提交留言', pendingNote: '留言提交后需要审核，通过前不会公开；同一个 IP 每分钟只能提交一次。', submitted: '留言已提交，审核通过后会显示在这里。', previous: '上一页', next: '下一页', page: number => `第 ${number} 页`,
+    errors: { EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_AUTHOR: '用户名需要在 1–40 个字符之间。', EMPTY_CONTENT: '请先填写留言内容。', CONTENT_TOO_LONG: '留言内容不能超过 2000 个字符。', UNSAFE_CONTENT: '请输入安全的纯文本内容。', RATE_LIMIT: '提交得太快了，请等待一分钟后再试。', INVALID_REQUEST: '请检查留言内容后重试。' },
   };
 }
 
