@@ -65,6 +65,25 @@ document.querySelectorAll('[data-account-form]').forEach(form => initializeAccou
 const registrationForm = document.querySelector('[data-registration-form]');
 if (registrationForm) initializeRegistrationForm(registrationForm);
 
+const guestbookAuthor = document.querySelector('[data-guestbook-author]');
+if (guestbookAuthor) initializeGuestbookAuthor(guestbookAuthor);
+
+function initializeGuestbookAuthor(input) {
+  const maxWidth = Number(input.dataset.maxDisplayWidth) || 60;
+  const validPattern = /^(?:[\p{L}\p{N}]\p{M}*)+$/u;
+  const displayWidth = value => Array.from(value.normalize('NFKC')).reduce((width, character) => {
+    if (/\p{M}/u.test(character)) return width;
+    return width + (/^[\p{Script=Latin}\p{N}]$/u.test(character) ? 1 : 2);
+  }, 0);
+  const validate = () => {
+    const value = input.value.normalize('NFKC');
+    const valid = !value || (validPattern.test(value) && displayWidth(value) <= maxWidth);
+    input.setCustomValidity(valid ? '' : input.dataset.invalidMessage);
+  };
+  input.addEventListener('input', validate);
+  input.form?.addEventListener('submit', validate);
+}
+
 function initializeLoginForm(form) {
   const submit = form.querySelector('button[type="submit"]');
   const countdown = form.querySelector('[data-login-countdown]');

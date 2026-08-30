@@ -13,7 +13,7 @@ import { AdminLoginRateLimitError, createAdminLoginSecurity } from './lib/admin-
 import { assertMailConfiguration, getMailStatus } from './lib/mailer.js';
 import { createPasswordResetSecurity, createPasswordResetToken, createRegistrationSecurity, hashPassword, hashPasswordResetToken, isMemberEmail, MemberRateLimitError, normalizeEmail, sendRegistrationAdminNotification, validateManagedUserFields, validateMemberFields, validateNewPassword, verifyPassword } from './lib/member-security.js';
 import { formatMemberDate, formatMemberTenure } from './lib/member-tenure.js';
-import { GuestbookStore, GuestbookValidationError, guestbookLimits } from './lib/guestbook-store.js';
+import { GuestbookStore, GuestbookValidationError, guestbookLimits, sanitizeGuestbookAuthor } from './lib/guestbook-store.js';
 import { normalizePostCategory, POST_CATEGORIES } from './lib/post-categories.js';
 import { sendPostEmail } from './lib/post-email.js';
 import { SqliteSessionStore } from './lib/sqlite-session-store.js';
@@ -736,7 +736,7 @@ app.post('/guestbook', (req, res) => {
   try {
     guestbookStore.submit({
       userId: currentUser?.id,
-      authorName: currentUser?.nickname || req.body.author_name,
+      authorName: currentUser ? guestbookMemberAuthorName(currentUser) : req.body.author_name,
       content: req.body.content,
       ipHash: guestbookIpHash(req.ip),
     });
@@ -3435,9 +3435,20 @@ function renderGuestbook(req, res, { errorCode = null, fields = {} } = {}) {
 
 function guestbookFields(fields = {}) {
   return {
-    author_name: String(fields.author_name || '').slice(0, guestbookLimits.author),
-    content: String(fields.content || '').slice(0, guestbookLimits.content),
+    author_name: Array.from(String(fields.author_name || '')).slice(0, guestbookLimits.author).join(''),
+    content: Array.from(String(fields.content || '')).slice(0, guestbookLimits.content).join(''),
   };
+}
+
+function guestbookMemberAuthorName(user) {
+  for (const candidate of [user?.nickname, user?.username]) {
+    try {
+      return sanitizeGuestbookAuthor(candidate);
+    } catch (error) {
+      if (!(error instanceof GuestbookValidationError)) throw error;
+    }
+  }
+  return 'Member';
 }
 
 function guestbookIpHash(ip) {
@@ -3463,15 +3474,15 @@ function formatGuestbookDate(value, locale) {
 function guestbookCopy(locale) {
   if (String(locale).startsWith('ja')) return {
     title: 'ゲストブック', description: 'AFTERIMAGE へのメッセージを残してください。承認後、このページに掲載されます。', count: count => `${count}件のメッセージ`, empty: 'まだ公開されたメッセージはありません。最初のメッセージをどうぞ。', formTitle: 'メッセージを残す', signedInAs: name => `${name} として投稿します`, author: 'お名前', authorPlaceholder: '表示するお名前', content: 'メッセージ', contentPlaceholder: 'ここにメッセージを入力してください…', submit: '送信する', submitted: 'メッセージを受け付けました。確認後に公開されます。', previous: '前のページ', next: '次のページ', page: number => `${number}ページ`,
-    errors: { EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_AUTHOR: 'お名前は1〜40文字で入力してください。', EMPTY_CONTENT: 'メッセージを入力してください。', CONTENT_TOO_LONG: 'メッセージは2000文字以内で入力してください。', UNSAFE_CONTENT: '安全なテキストを入力してください。', RATE_LIMIT: '送信間隔が短すぎます。1分待ってから再試行してください。', INVALID_REQUEST: '送信内容を確認してください。' },
+    errors: { EXPIRED_FORM: 'ページの有効期限が切れました。更新して再試行してください。', INVALID_AUTHOR: 'お名前は空白や記号を使わず、日本語30文字または英数60文字以内で入力してください。', EMPTY_CONTENT: 'メッセージを入力してください。', CONTENT_TOO_LONG: 'メッセージは500文字以内で入力してください。', UNSAFE_CONTENT: '安全なテキストを入力してください。', RATE_LIMIT: '送信間隔が短すぎます。1分待ってから再試行してください。', INVALID_REQUEST: '送信内容を確認してください。' },
   };
   if (String(locale).startsWith('en')) return {
     title: 'Guestbook', description: 'Leave a note for AFTERIMAGE. Messages appear here after review.', count: count => `${count} ${count === 1 ? 'message' : 'messages'}`, empty: 'No messages have been published yet. You can leave the first one.', formTitle: 'Leave a message', signedInAs: name => `Posting as ${name}`, author: 'Name', authorPlaceholder: 'Name shown with your message', content: 'Message', contentPlaceholder: 'Write your message here…', submit: 'Submit message', submitted: 'Thank you. Your message was submitted and will appear after review.', previous: 'Previous', next: 'Next', page: number => `Page ${number}`,
-    errors: { EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_AUTHOR: 'Enter a name between 1 and 40 characters.', EMPTY_CONTENT: 'Write a message before submitting.', CONTENT_TOO_LONG: 'Keep your message within 2,000 characters.', UNSAFE_CONTENT: 'Enter a safe plain-text message.', RATE_LIMIT: 'Please wait one minute before submitting another message.', INVALID_REQUEST: 'Check your message and try again.' },
+    errors: { EXPIRED_FORM: 'This page has expired. Refresh and try again.', INVALID_AUTHOR: 'Use letters and numbers only, without spaces or symbols (up to 60 English or 30 CJK characters).', EMPTY_CONTENT: 'Write a message before submitting.', CONTENT_TOO_LONG: 'Keep your message within 500 characters.', UNSAFE_CONTENT: 'Enter a safe plain-text message.', RATE_LIMIT: 'Please wait one minute before submitting another message.', INVALID_REQUEST: 'Check your message and try again.' },
   };
   return {
     title: '留言板', description: '给 AFTERIMAGE 留下一段话。留言审核通过后会显示在这里。', count: count => `${count} 条留言`, empty: '暂时还没有公开留言，你可以留下第一条。', formTitle: '写下留言', signedInAs: name => `将以 ${name} 的身份留言`, author: '用户名', authorPlaceholder: '留言旁显示的名字', content: '留言内容', contentPlaceholder: '在这里写下你想说的话……', submit: '提交留言', submitted: '留言已提交，审核通过后会显示在这里。', previous: '上一页', next: '下一页', page: number => `第 ${number} 页`,
-    errors: { EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_AUTHOR: '用户名需要在 1–40 个字符之间。', EMPTY_CONTENT: '请先填写留言内容。', CONTENT_TOO_LONG: '留言内容不能超过 2000 个字符。', UNSAFE_CONTENT: '请输入安全的纯文本内容。', RATE_LIMIT: '提交得太快了，请等待一分钟后再试。', INVALID_REQUEST: '请检查留言内容后重试。' },
+    errors: { EXPIRED_FORM: '页面已过期，请刷新后重试。', INVALID_AUTHOR: '名称只能使用字母和数字，不能有空格或特殊字符；最长约30个中文或60个英文字符。', EMPTY_CONTENT: '请先填写留言内容。', CONTENT_TOO_LONG: '留言内容不能超过500个字符。', UNSAFE_CONTENT: '请输入安全的纯文本内容。', RATE_LIMIT: '提交得太快了，请等待一分钟后再试。', INVALID_REQUEST: '请检查留言内容后重试。' },
   };
 }
 

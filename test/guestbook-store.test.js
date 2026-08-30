@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { GuestbookStore, GuestbookValidationError, sanitizeGuestbookContent } from '../lib/guestbook-store.js';
+import { GuestbookStore, GuestbookValidationError, sanitizeGuestbookAuthor, sanitizeGuestbookContent } from '../lib/guestbook-store.js';
 
 function createDatabase() {
   const db = new Database(':memory:');
@@ -16,6 +16,26 @@ function createDatabase() {
 test('guestbook content is stored as safe plain text', () => {
   assert.equal(sanitizeGuestbookContent('<b>Hello</b><script>alert(1)</script><style>body{display:none}</style> world'), 'Hello world');
   assert.equal(sanitizeGuestbookContent('first\n\nsecond'), 'first\n\nsecond');
+});
+
+test('guestbook author accepts only letters and numbers within display-width limit', () => {
+  assert.equal(sanitizeGuestbookAuthor('A'.repeat(60)), 'A'.repeat(60));
+  assert.equal(sanitizeGuestbookAuthor('郭'.repeat(30)), '郭'.repeat(30));
+  assert.equal(sanitizeGuestbookAuthor('GuoJing2026'), 'GuoJing2026');
+  for (const value of ['A'.repeat(61), '郭'.repeat(31), 'Guo Jing', 'Guo-Jing', 'Guo_Jing', '<b>GuoJing</b>', '😊']) {
+    assert.throws(
+      () => sanitizeGuestbookAuthor(value),
+      error => error instanceof GuestbookValidationError && error.code === 'INVALID_AUTHOR',
+    );
+  }
+});
+
+test('guestbook content is limited to 500 characters', () => {
+  assert.equal(sanitizeGuestbookContent('留'.repeat(500)), '留'.repeat(500));
+  assert.throws(
+    () => sanitizeGuestbookContent('留'.repeat(501)),
+    error => error instanceof GuestbookValidationError && error.code === 'CONTENT_TOO_LONG',
+  );
 });
 
 test('new messages remain pending and are invisible until approved', () => {

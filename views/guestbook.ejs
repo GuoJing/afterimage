@@ -39,7 +39,7 @@
       <form class="guestbook-form" action="<%= formAction %>" method="post">
         <input type="hidden" name="csrf" value="<%= guestbookCsrf %>">
         <% if (!currentUser) { %>
-          <label><span><%= copy.author %></span><input name="author_name" value="<%= fields.author_name %>" maxlength="<%= limits.author %>" placeholder="<%= copy.authorPlaceholder %>" autocomplete="nickname" required></label>
+          <label><span><%= copy.author %></span><input name="author_name" value="<%= fields.author_name %>" maxlength="<%= limits.author %>" data-guestbook-author data-max-display-width="<%= limits.authorDisplayWidth %>" data-invalid-message="<%= copy.errors.INVALID_AUTHOR %>" pattern="(?:[\p{L}\p{N}]\p{M}*)+" placeholder="<%= copy.authorPlaceholder %>" autocomplete="nickname" required></label>
         <% } %>
         <label><span><%= copy.content %></span><textarea name="content" maxlength="<%= limits.content %>" placeholder="<%= copy.contentPlaceholder %>" rows="6" required><%= fields.content %></textarea></label>
         <div class="guestbook-submit"><button class="primary" type="submit"><%= copy.submit %></button></div>
