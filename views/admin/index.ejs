@@ -18,6 +18,13 @@
         </div>
       <% }) %>
     </section>
+    <% if (totalPages > 1) { %>
+      <nav class="admin-pagination" aria-label="文章分页">
+        <span><% if (previousUrl) { %><a href="<%= previousUrl %>">← 上一页</a><% } %></span>
+        <small>第 <%= page %> / <%= totalPages %> 页 · 共 <%= totalPosts %> 篇</small>
+        <span class="next"><% if (nextUrl) { %><a href="<%= nextUrl %>">下一页 →</a><% } %></span>
+      </nav>
+    <% } %>
   </main>
 </div>
 <%- include('../partials/footer', { adminLayout: true }) %>

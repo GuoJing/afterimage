@@ -24,6 +24,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 const homePageSize = 10;
+const adminPostPageSize = 10;
 const adminBasePath = '/qiajigou';
 const siteUrl = normalizeSiteUrl(process.env.SITE_URL || 'https://afterimage.photography');
 assertMailConfiguration();
@@ -1115,6 +1116,11 @@ app.post(`${adminBasePath}/logout`, requireAdmin, requireCsrf, (req, res) => {
 });
 
 app.get(adminBasePath, requireAdmin, (req, res) => {
+  const page = parseHomePage(req.query.page);
+  if (!page) return res.status(404).render('not-found');
+  const totalPosts = db.prepare('SELECT COUNT(*) AS count FROM posts').get().count;
+  const totalPages = Math.max(1, Math.ceil(totalPosts / adminPostPageSize));
+  if (page > totalPages) return res.status(404).render('not-found');
   const posts = db.prepare(`
     SELECT p.*, COALESCE(t.title,
       (SELECT title FROM post_translations WHERE post_id = p.id ORDER BY id LIMIT 1), p.slug) AS title,
@@ -1128,8 +1134,17 @@ app.get(adminBasePath, requireAdmin, (req, res) => {
     FROM posts p
     LEFT JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
     ORDER BY COALESCE(p.published_at, p.created_at) DESC
-  `).all(defaultLocale);
-  res.render('admin/index', { posts, csrf: req.session.csrf });
+    LIMIT ? OFFSET ?
+  `).all(defaultLocale, adminPostPageSize, (page - 1) * adminPostPageSize);
+  res.render('admin/index', {
+    posts,
+    csrf: req.session.csrf,
+    page,
+    totalPages,
+    totalPosts,
+    previousUrl: page > 1 ? `${adminBasePath}${page === 2 ? '' : `?page=${page - 1}`}` : null,
+    nextUrl: page < totalPages ? `${adminBasePath}?page=${page + 1}` : null,
+  });
 });
 
 app.get(`${adminBasePath}/users`, requireAdmin, (req, res) => {
