@@ -241,7 +241,14 @@ if (imageStorage === 'local') {
     next();
   }, express.static(imageUploadDir, { maxAge: '1y', immutable: true, index: false, dotfiles: 'deny' }));
 }
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1d',
+  setHeaders: (res, filePath) => {
+    if (/\/(?:style\.css|app\.js|brand-mark\.png)$/.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 const sessionStore = new SqliteSessionStore({ db, ttlMs: sessionTtlMs });
 app.use(session({
   name: 'afterimage.sid',
@@ -299,6 +306,7 @@ app.use((req, res, next) => {
     : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
   res.locals.structuredData = null;
   res.locals.markdownUrl = null;
+  res.locals.preconnectUrls = [];
   res.locals.imageUploadUrl = `${adminBasePath}/uploads/images`;
   res.locals.imageMaxSizeMb = imageMaxSizeMb;
   res.locals.imageMaxBytes = imageMaxBytes;
@@ -523,6 +531,7 @@ app.get('/post/:locale/:slug', (req, res) => {
     publishedAt: post.published_at,
     modifiedAt: sqliteDateToIso(post.updated_at),
     relatedPosts,
+    preconnectUrls: externalOrigins(image),
     authorUrl: pageUrl(post.rendered_locale, 'about'),
     robots: post.status === 'published'
       ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
@@ -597,6 +606,7 @@ app.get('/page/:locale/:slug', (req, res) => {
     authorName: page.slug.toLowerCase() === 'about' ? blog.author : undefined,
     documentTitle: page.slug.toLowerCase() === 'about' ? `${blog.author} — Photographer | ${blog.title}` : '',
     modifiedAt: sqliteDateToIso(page.updated_at),
+    preconnectUrls: externalOrigins(image),
     robots: page.status === 'published'
       ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
       : 'noindex, nofollow, noarchive',
@@ -688,6 +698,7 @@ app.get('/gallery/:slug', (req, res) => {
     markdownUrl: absoluteUrl(`${galleryUrl(gallery.slug)}.md`),
     publishedAt: gallery.published_at,
     modifiedAt: sqliteDateToIso(gallery.updated_at),
+    preconnectUrls: externalOrigins(image),
   });
 });
 
@@ -1737,6 +1748,18 @@ function absoluteUrl(pathname) {
   return new URL(pathname, `${siteUrl}/`).toString();
 }
 
+function externalOrigins(...urls) {
+  const siteOrigin = new URL(siteUrl).origin;
+  return [...new Set(urls.flat().map(value => {
+    try {
+      const url = new URL(value, `${siteUrl}/`);
+      return url.origin === siteOrigin ? null : url.origin;
+    } catch {
+      return null;
+    }
+  }).filter(Boolean))];
+}
+
 function homePath(locale, page = 1) {
   const params = new URLSearchParams();
   if (locale !== defaultLocale) params.set('lang', locale);
@@ -2357,7 +2380,7 @@ function renderMarkdown(markdown) {
       ...sanitizeHtml.defaults.allowedAttributes,
       div: ['class'],
       span: ['class'],
-      img: ['src', 'alt', 'title', 'loading', 'decoding'],
+      img: ['src', 'alt', 'title', 'loading', 'decoding', 'fetchpriority'],
     },
     allowedClasses: { div: ['image-stack'], span: ['image-row'] },
     allowedSchemes: ['http', 'https', 'mailto'],
@@ -2369,14 +2392,12 @@ function renderMarkdown(markdown) {
           alt: String(attribs.alt || '').trim() || imageAltFromUrl(attribs.src),
           loading: 'lazy',
           decoding: 'async',
+          fetchpriority: 'low',
         },
       }),
     },
   });
-  return html.replace(/<img\b[^>]*>/i, tag => {
-    const prioritized = tag.replace(/\sloading="[^"]*"/, '');
-    return prioritized.replace('<img', '<img loading="eager" fetchpriority="high"');
-  });
+  return html;
 }
 
 function imageAltFromUrl(value) {

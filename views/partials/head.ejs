@@ -28,6 +28,8 @@
   <% }) } %>
   <% if (typeof xDefaultUrl !== 'undefined' && xDefaultUrl) { %><link rel="alternate" hreflang="x-default" href="<%= xDefaultUrl %>"><% } %>
   <% if (typeof markdownUrl !== 'undefined' && markdownUrl) { %><link rel="alternate" type="text/markdown" href="<%= markdownUrl %>"><% } %>
+  <% if (typeof preconnectUrls !== 'undefined') { preconnectUrls.forEach(url => { %><link rel="preconnect" href="<%= url %>" crossorigin>
+  <% }) } %>
   <link rel="describedby" type="text/plain" href="/llms.txt">
   <meta property="og:site_name" content="<%= blog.title %>">
   <meta property="og:type" content="<%= resolvedOgType %>">
@@ -49,6 +51,7 @@
   <meta name="twitter:image" content="<%= resolvedOgImage %>">
   <meta name="twitter:image:alt" content="<%= typeof ogImageAlt !== 'undefined' && ogImageAlt ? ogImageAlt : resolvedTitle %>">
   <% if (typeof structuredData !== 'undefined' && structuredData) { %><script type="application/ld+json"><%- serializeJsonLd(structuredData) %></script><% } %>
+  <link rel="preload" href="/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css?v=56">
   <script>try{const saved=localStorage.getItem('theme');document.documentElement.dataset.theme=saved==='dark'||saved==='light'?saved:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 </head>
@@ -56,7 +59,7 @@
 <% if (!(typeof adminLayout !== 'undefined' && adminLayout)) { %>
 <header class="site-head">
   <div class="head-inner">
-    <a class="logo" href="/<%= langQuery %>"><img src="/apple-touch-icon.png" width="30" height="30" alt=""><span><%= blog.title %></span></a>
+    <a class="logo" href="/<%= langQuery %>"><img src="/brand-mark.png?v=1" width="30" height="30" alt="" decoding="async"><span><%= blog.title %></span></a>
     <div class="head-actions">
       <a class="account-link <%= currentUser ? 'has-avatar' : '' %>" href="<%= accountUrl %>">
         <% if (currentUser) { %>
