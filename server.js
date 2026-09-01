@@ -24,6 +24,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000;
 const homePageSize = 10;
+const collectionPageSize = 10;
 const adminPostPageSize = 10;
 const adminBasePath = '/qiajigou';
 const siteUrl = normalizeSiteUrl(process.env.SITE_URL || 'https://afterimage.photography');
@@ -371,18 +372,30 @@ app.get('/', (req, res) => {
 });
 
 app.get('/archive', (req, res) => {
+  const page = parseHomePage(req.query.page);
+  if (!page) return res.status(404).render('not-found');
   const requestedLocale = parameterLocale(req);
   const selectedLocale = getSelectedLocale(req);
   if (selectedLocale && selectedLocale !== requestedLocale) {
-    return res.redirect(302, archivePath(selectedLocale));
+    const selectedTotalPages = Math.max(1, Math.ceil(countPublishedPostsByExactLocale(selectedLocale) / collectionPageSize));
+    return res.redirect(302, archivePath(selectedLocale, Math.min(page, selectedTotalPages)));
   }
   const locale = selectedLocale || requestedLocale;
   setResponseLocale(res, locale);
-  const posts = getPublishedPostsByExactLocale(locale);
+  const totalPosts = countPublishedPostsByExactLocale(locale);
+  const totalPages = Math.max(1, Math.ceil(totalPosts / collectionPageSize));
+  if (page > totalPages) return res.status(404).render('not-found');
+  const posts = getPublishedPostsPageByExactLocale(locale, collectionPageSize, (page - 1) * collectionPageSize);
   const title = archiveTitle(locale);
-  const description = archiveDescription(locale);
-  const canonicalUrl = absoluteUrl(archivePath(locale));
-  const alternateUrls = configuredLocales.map(code => ({ locale: code, url: absoluteUrl(archivePath(code)) }));
+  const paginationCopy = homePaginationCopy[locale] || homePaginationCopy.en;
+  const pageLabel = paginationCopy.page(page);
+  const description = page === 1 ? archiveDescription(locale) : `${archiveDescription(locale)} ${pageLabel}`;
+  const canonicalUrl = absoluteUrl(archivePath(locale, page));
+  const alternateLocales = configuredLocales.filter(code => page <= Math.max(1, Math.ceil(countPublishedPostsByExactLocale(code) / collectionPageSize)));
+  const alternateUrls = alternateLocales.map(code => ({ locale: code, url: absoluteUrl(archivePath(code, page)) }));
+  const xDefaultLocale = alternateLocales.includes(defaultLocale) ? defaultLocale : locale;
+  const previousUrl = page > 1 ? archivePath(locale, page - 1) : null;
+  const nextUrl = page < totalPages ? archivePath(locale, page + 1) : null;
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
@@ -395,7 +408,7 @@ app.get('/archive', (req, res) => {
       '@type': 'ItemList',
       itemListElement: posts.map((post, index) => ({
         '@type': 'ListItem',
-        position: index + 1,
+        position: (page - 1) * collectionPageSize + index + 1,
         url: absoluteUrl(postUrl(locale, post.slug)),
         name: post.title,
       })),
@@ -408,9 +421,15 @@ app.get('/archive', (req, res) => {
     description,
     canonicalUrl,
     alternateUrls,
-    xDefaultUrl: absoluteUrl(archivePath(defaultLocale)),
+    xDefaultUrl: absoluteUrl(archivePath(xDefaultLocale, page)),
+    previousUrl,
+    nextUrl,
     structuredData,
     htmlLang: locale,
+    page,
+    totalPages,
+    paginationCopy,
+    pageTitle: page === 1 ? title : `${title} — ${pageLabel}`,
   });
 });
 
@@ -438,26 +457,53 @@ app.get('/topics', (req, res) => {
 });
 
 app.get('/topics/:slug', (req, res) => {
-  const locale = preferredParameterizedLocale(req, res, `/topics/${encodeURIComponent(req.params.slug)}`);
-  if (!locale) return;
-  const topic = getTopic(req.params.slug, locale);
+  const page = parseHomePage(req.query.page);
+  if (!page) return res.status(404).render('not-found');
+  const requestedLocale = parameterLocale(req);
+  const selectedLocale = getSelectedLocale(req);
+  if (selectedLocale && selectedLocale !== requestedLocale) {
+    const selectedTopic = getTopicSummary(req.params.slug, selectedLocale);
+    const selectedTotalPages = Math.max(1, Math.ceil((selectedTopic?.count || 0) / collectionPageSize));
+    return res.redirect(302, topicPath(req.params.slug, selectedLocale, Math.min(page, selectedTotalPages)));
+  }
+  const locale = selectedLocale || requestedLocale;
+  setResponseLocale(res, locale);
+  const topic = getTopicSummary(req.params.slug, locale);
   if (!topic) return res.status(404).render('not-found');
-  const availableLocales = configuredLocales.filter(code => getTopic(req.params.slug, code));
-  const canonicalUrl = absoluteUrl(topicPath(topic.slug, locale));
-  const alternateUrls = availableLocales.map(code => ({ locale: code, url: absoluteUrl(topicPath(topic.slug, code)) }));
+  const totalPages = Math.max(1, Math.ceil(topic.count / collectionPageSize));
+  if (page > totalPages) return res.status(404).render('not-found');
+  const pagePosts = getPublishedPostsByTopic(topic.name, locale, collectionPageSize, (page - 1) * collectionPageSize);
+  const availableLocales = configuredLocales.filter(code => {
+    const translatedTopic = getTopicSummary(req.params.slug, code);
+    return translatedTopic && page <= Math.max(1, Math.ceil(translatedTopic.count / collectionPageSize));
+  });
+  const canonicalUrl = absoluteUrl(topicPath(topic.slug, locale, page));
+  const alternateUrls = availableLocales.map(code => ({ locale: code, url: absoluteUrl(topicPath(topic.slug, code, page)) }));
   const copy = seoCopy(locale);
-  const description = localizedTopicDescription(topic.name, topic.posts.length, locale);
+  const paginationCopy = homePaginationCopy[locale] || homePaginationCopy.en;
+  const pageLabel = paginationCopy.page(page);
+  const baseDescription = localizedTopicDescription(topic.name, topic.count, locale);
+  const description = page === 1 ? baseDescription : `${baseDescription} ${pageLabel}`;
   const structuredData = collectionStructuredData(topic.name, description, canonicalUrl, locale,
-    topic.posts.map(post => ({ name: post.title, url: absoluteUrl(postUrl(locale, post.slug)) })));
+    pagePosts.map(post => ({ name: post.title, url: absoluteUrl(postUrl(locale, post.slug)) })));
+  const xDefaultLocale = availableLocales.includes(defaultLocale) ? defaultLocale : locale;
+  const previousUrl = page > 1 ? topicPath(topic.slug, locale, page - 1) : null;
+  const nextUrl = page < totalPages ? topicPath(topic.slug, locale, page + 1) : null;
   res.render('topic', {
-    topic,
+    topic: { ...topic, posts: pagePosts },
     description,
     canonicalUrl,
     alternateUrls,
-    xDefaultUrl: absoluteUrl(topicPath(topic.slug, availableLocales.includes(defaultLocale) ? defaultLocale : locale)),
+    xDefaultUrl: absoluteUrl(topicPath(topic.slug, xDefaultLocale, page)),
+    previousUrl,
+    nextUrl,
     structuredData,
     htmlLang: locale,
     copy,
+    page,
+    totalPages,
+    paginationCopy,
+    documentTitle: page === 1 ? '' : `${topic.name} — ${pageLabel} | ${blog.title}`,
   });
 });
 
@@ -1768,8 +1814,12 @@ function homePath(locale, page = 1) {
   return query ? `/?${query}` : '/';
 }
 
-function archivePath(locale) {
-  return locale === defaultLocale ? '/archive' : `/archive?lang=${encodeURIComponent(locale)}`;
+function archivePath(locale, page = 1) {
+  const params = new URLSearchParams();
+  if (locale !== defaultLocale) params.set('lang', locale);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `/archive?${query}` : '/archive';
 }
 
 function feedPath(locale) {
@@ -1788,16 +1838,23 @@ function guestbookPath(locale, page = 1) {
   return query ? `/guestbook?${query}` : '/guestbook';
 }
 
-function topicPath(slug, locale) {
+function topicPath(slug, locale, page = 1) {
   const pathname = `/topics/${encodeURIComponent(slug)}`;
-  return locale === defaultLocale ? pathname : `${pathname}?lang=${encodeURIComponent(locale)}`;
+  const params = new URLSearchParams();
+  if (locale !== defaultLocale) params.set('lang', locale);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 function preferredParameterizedLocale(req, res, pathname) {
   const requestedLocale = parameterLocale(req);
   const selectedLocale = getSelectedLocale(req);
   if (selectedLocale && selectedLocale !== requestedLocale) {
-    const target = selectedLocale === defaultLocale ? pathname : `${pathname}?lang=${encodeURIComponent(selectedLocale)}`;
+    const params = new URLSearchParams();
+    if (selectedLocale !== defaultLocale) params.set('lang', selectedLocale);
+    const query = params.toString();
+    const target = query ? `${pathname}?${query}` : pathname;
     res.redirect(302, target);
     return null;
   }
@@ -2332,11 +2389,22 @@ function localizePath(currentPath, locale) {
   if (pathname === '/') return homePath(locale, parseHomePage(currentUrl.searchParams.get('page')) || 1);
   if (pathname === '/account') return accountUrl(locale);
   if (pathname === '/account/reset') return accountResetUrl(locale);
-  if (pathname === '/archive') return archivePath(locale);
+  if (pathname === '/archive') {
+    const page = parseHomePage(currentUrl.searchParams.get('page')) || 1;
+    const totalPages = Math.max(1, Math.ceil(countPublishedPostsByExactLocale(locale) / collectionPageSize));
+    return archivePath(locale, Math.min(page, totalPages));
+  }
   if (pathname === '/topics') return topicsPath(locale);
   if (pathname === '/guestbook') return guestbookPath(locale, parseHomePage(currentUrl.searchParams.get('page')) || 1);
   const topicMatch = pathname.match(/^\/topics\/([^/]+)$/);
-  if (topicMatch) return topicPath(topicMatch[1], locale);
+  if (topicMatch) {
+    let slug = topicMatch[1];
+    try { slug = decodeURIComponent(slug); } catch {}
+    const page = parseHomePage(currentUrl.searchParams.get('page')) || 1;
+    const topic = getTopicSummary(slug, locale);
+    const totalPages = Math.max(1, Math.ceil((topic?.count || 0) / collectionPageSize));
+    return topicPath(slug, locale, Math.min(page, totalPages));
+  }
   if (/^\/galleries\/?$/.test(pathname)) return '/galleries';
   if (/^\/gallery\/[^/]+\/?$/.test(pathname)) return pathname.replace(/\/$/, '');
   const postMatch = pathname.match(/^\/post\/[^/]+\/([^/]+)$/);
@@ -2455,6 +2523,26 @@ function getPublishedPostsByExactLocale(locale) {
   `).all(locale).map(withPostMetadata);
 }
 
+function countPublishedPostsByExactLocale(locale) {
+  return Number(db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM posts p
+    JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
+    WHERE p.status = 'published'
+  `).get(locale).total);
+}
+
+function getPublishedPostsPageByExactLocale(locale, limit, offset) {
+  return db.prepare(`
+    SELECT p.*, t.title, t.summary, t.body, t.locale AS rendered_locale
+    FROM posts p
+    JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
+    WHERE p.status = 'published'
+    ORDER BY p.published_at DESC, p.id DESC
+    LIMIT ? OFFSET ?
+  `).all(locale, limit, offset).map(withPostMetadata);
+}
+
 function topicSlug(category) {
   return String(category || '').normalize('NFKC').toLocaleLowerCase('en')
     .replace(/[’']/g, '')
@@ -2464,22 +2552,31 @@ function topicSlug(category) {
 }
 
 function getTopics(locale) {
-  const topics = new Map();
-  for (const post of getPublishedPostsByExactLocale(locale)) {
-    const name = String(post.category || '').trim();
-    if (!name) continue;
-    const slug = topicSlug(name);
-    const topic = topics.get(slug) || { slug, name, count: 0, posts: [] };
-    topic.count += 1;
-    topic.posts.push(post);
-    topics.set(slug, topic);
-  }
-  return [...topics.values()].sort((left, right) => left.name.localeCompare(right.name, locale));
+  return db.prepare(`
+    SELECT p.category AS name, COUNT(*) AS count
+    FROM posts p
+    JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
+    WHERE p.status = 'published' AND TRIM(p.category) <> ''
+    GROUP BY p.category
+  `).all(locale)
+    .map(topic => ({ ...topic, count: Number(topic.count), slug: topicSlug(topic.name) }))
+    .sort((left, right) => left.name.localeCompare(right.name, locale));
 }
 
-function getTopic(slug, locale) {
+function getTopicSummary(slug, locale) {
   const normalizedSlug = topicSlug(slug);
   return getTopics(locale).find(topic => topic.slug === normalizedSlug) || null;
+}
+
+function getPublishedPostsByTopic(category, locale, limit, offset) {
+  return db.prepare(`
+    SELECT p.*, t.title, t.summary, t.body, t.locale AS rendered_locale
+    FROM posts p
+    JOIN post_translations t ON t.post_id = p.id AND t.locale = ?
+    WHERE p.status = 'published' AND p.category = ?
+    ORDER BY p.published_at DESC, p.id DESC
+    LIMIT ? OFFSET ?
+  `).all(locale, category, limit, offset).map(withPostMetadata);
 }
 
 function getRelatedPosts(post, locale, limit = 4) {

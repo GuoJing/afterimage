@@ -208,6 +208,11 @@ body.image-lightbox-open { overflow: hidden; }
 .topic-post-list h2 a { color: var(--strong); text-decoration: none; }
 .topic-post-list h2 a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .topic-post-list p { max-width: 720px; margin: 12px 0 0; color: var(--light); line-height: 1.6; }
+.collection-pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 24px 0 4px; }
+.collection-pagination span:last-child { text-align: right; }
+.collection-pagination a { color: var(--text); font: 600 13px/1.4 var(--sans); letter-spacing: .02em; text-decoration: none; }
+.collection-pagination a:hover, .collection-pagination a:focus-visible { color: var(--strong); text-decoration: underline; text-underline-offset: 5px; }
+.collection-pagination small { color: var(--mute); font: 500 11px/1.4 var(--sans); font-variant-numeric: tabular-nums; }
 .taxonomy-empty { padding: 42px 0; border-top: 1px solid var(--line); color: var(--light); }
 .gallery-index-main { min-height: calc(100vh - 100px); padding: 42px 24px 64px; font-family: var(--font-base); }
 .gallery-index { width: min(1200px, 100%); margin: 0 auto; }

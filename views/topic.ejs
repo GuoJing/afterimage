@@ -1,4 +1,4 @@
-<%- include('partials/head', { pageTitle: topic.name, description }) %>
+<%- include('partials/head', { pageTitle: topic.name, documentTitle, description, previousUrl, nextUrl }) %>
 <main class="taxonomy-main">
   <section class="taxonomy-inner" aria-labelledby="topic-title">
     <header class="taxonomy-header">
@@ -17,6 +17,13 @@
         </article>
       <% }) %>
     </div>
+    <% if (previousUrl || nextUrl) { %>
+      <nav class="collection-pagination" aria-label="<%= paginationCopy.navigation %>">
+        <span><% if (previousUrl) { %><a class="previous" rel="prev" href="<%= previousUrl %>">← <%= paginationCopy.previous %></a><% } %></span>
+        <small><%= paginationCopy.page(page) %> / <%= totalPages %></small>
+        <span><% if (nextUrl) { %><a class="next" rel="next" href="<%= nextUrl %>"><%= paginationCopy.next %> →</a><% } %></span>
+      </nav>
+    <% } %>
   </section>
 </main>
 <%- include('partials/footer') %>
