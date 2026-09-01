@@ -503,6 +503,7 @@ app.get('/topics/:slug', (req, res) => {
     page,
     totalPages,
     paginationCopy,
+    archiveExcerpt,
     documentTitle: page === 1 ? '' : `${topic.name} — ${pageLabel} | ${blog.title}`,
   });
 });

@@ -1,22 +1,22 @@
 <%- include('partials/head', { pageTitle: topic.name, documentTitle, description, previousUrl, nextUrl }) %>
-<main class="taxonomy-main">
-  <section class="taxonomy-inner" aria-labelledby="topic-title">
-    <header class="taxonomy-header">
+<main class="archive-main">
+  <div class="archive-inner">
+    <header class="taxonomy-header topic-archive-header">
       <p class="eyebrow"><%= copy.topicLabel %></p>
       <h1 id="topic-title"><%= topic.name %></h1>
       <p><%= description %></p>
     </header>
-    <div class="topic-post-list">
+    <section class="archive-list" aria-labelledby="topic-title">
       <% topic.posts.forEach(post => { %>
-        <article>
+        <article class="archive-item" lang="<%= post.rendered_locale %>">
           <time datetime="<%= post.published_at %>"><%= formatDate(post.published_at) %></time>
-          <div>
+          <div class="archive-item-content">
             <h2><a href="/post/<%= post.rendered_locale %>/<%= post.slug %>"><%= post.title %></a></h2>
-            <% if (post.summary) { %><p><%= post.summary %></p><% } %>
+            <% const excerpt = archiveExcerpt(post); if (excerpt) { %><p><%= excerpt %></p><% } %>
           </div>
         </article>
       <% }) %>
-    </div>
+    </section>
     <% if (previousUrl || nextUrl) { %>
       <nav class="collection-pagination" aria-label="<%= paginationCopy.navigation %>">
         <span><% if (previousUrl) { %><a class="previous" rel="prev" href="<%= previousUrl %>">← <%= paginationCopy.previous %></a><% } %></span>
@@ -24,6 +24,6 @@
         <span><% if (nextUrl) { %><a class="next" rel="next" href="<%= nextUrl %>"><%= paginationCopy.next %> →</a><% } %></span>
       </nav>
     <% } %>
-  </section>
+  </div>
 </main>
 <%- include('partials/footer') %>
